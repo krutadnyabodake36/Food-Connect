@@ -1,0 +1,9 @@
+{
+  "name": "FoodConnect Partner Portal",
+  "description": "A high-trust, utilitarian portal for hotel partners to manage food donations. Features AI-powered food recognition, image enhancement, and impact video generation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

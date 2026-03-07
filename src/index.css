@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Forest Green - Hotel/Partner Brand */
+  --color-forest-50: #f2fcf5;
+  --color-forest-100: #e1f8e8;
+  --color-forest-200: #c3efd2;
+  --color-forest-300: #94e0b3;
+  --color-forest-400: #5cc78f;
+  --color-forest-500: #34ab72;
+  --color-forest-600: #268a5b;
+  --color-forest-700: #206e4a;
+  --color-forest-800: #1d573d;
+  --color-forest-900: #184834;
+  --color-forest-950: #0c281d;
+
+  /* Font Families */
+  --font-sans: 'Inter', sans-serif;
+  --font-serif: 'Libre Baskerville', serif;
+}
+
+/* Hide scrollbar for clean look */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area padding for mobile */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Custom map marker styles */
+.custom-map-marker {
+  background: none !important;
+  border: none !important;
+}
+.custom-cluster-marker {
+  background: none !important;
+  border: none !important;
+}
+.user-loc-marker {
+  background: none !important;
+  border: none !important;
+}
+
+/* Leaflet overrides */
+.leaflet-container {
+  font-family: 'Inter', sans-serif;
+}
