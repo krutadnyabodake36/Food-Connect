@@ -27,9 +27,9 @@ export const useAuth = () => {
 
 // Helper to normalize strings for emails
 const normalizeString = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-const getHotelEmail = (name: string) => `${normalizeString(name)}@foodconnect.app`;
-const getVolEmail = (name: string) => `${normalizeString(name)}-vol@foodconnect.app`;
-const getPhoneEmail = (phone: string) => `${normalizeString(phone)}@foodconnect.app`;
+const getHotelEmail = (name: string) => `${normalizeString(name)}@hotel.foodconnect.com`;
+const getVolEmail = (name: string) => `${normalizeString(name)}@vol.foodconnect.com`;
+const getPhoneEmail = (phone: string) => `${normalizeString(phone)}@phone.foodconnect.com`;
 // Secure constant password for phone-login users in this demo app
 const PHONE_AUTH_PASSWORD = 'FoodConnectPhoneLogin2024!';
 
