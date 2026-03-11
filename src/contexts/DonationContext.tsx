@@ -74,12 +74,17 @@ const rowToDonation = (row: any): HotelDonation => ({
   tracking: row._tracking,
 });
 
-// Seed data for localStorage fallback
+// ── STORAGE KEY ──
+const STORAGE_KEY = 'foodconnect_donations';
+
+// Seed data for localStorage fallback — ALL belong to the Demo Hotel
+const DEMO_HOTEL_ID = '11111111-1111-1111-1111-111111111111';
+
 const SEED_DONATIONS: HotelDonation[] = [
-  { id: 'seed-1', hotelId: '11111111-1111-1111-1111-111111111111', title: 'Veg Biryani & Curry', weight: 6, tags: ['Veg', 'Hot'], status: 'pending', timestamp: '25 min ago', pickupWindow: '10:30 PM', imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format&fit=crop&q=60' },
-  { id: 'seed-2', hotelId: 'hotel-oceanCatch', title: 'Grilled Fish Surplus', weight: 3, tags: ['Non-Veg', 'Fragile'], status: 'pending', timestamp: '40 min ago', pickupWindow: '11:00 PM', imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a3a2750?w=800&auto=format&fit=crop&q=60' },
-  { id: 'seed-3', hotelId: 'hotel-spiceRoute', title: 'Assorted Breads & Dal', weight: 12, tags: ['Veg', 'Bulk'], status: 'pending', timestamp: '1 hour ago', pickupWindow: '11:45 PM', imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=800&auto=format&fit=crop&q=60' },
-  { id: 'seed-4', hotelId: 'hotel-cafeDelight', title: 'Pastries & Sandwiches', weight: 4, tags: ['Bakery', 'Cool'], status: 'pending', timestamp: '2 hours ago', pickupWindow: '08:00 AM', imageUrl: 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?w=800&auto=format&fit=crop&q=60' },
+  { id: 'seed-1', hotelId: DEMO_HOTEL_ID, title: 'Veg Biryani & Curry', weight: 6, tags: ['Veg', 'Hot'], status: 'pending', timestamp: '25 min ago', pickupWindow: '10:30 PM', imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format&fit=crop&q=60', isUrgent: false },
+  { id: 'seed-2', hotelId: 'hotel-oceanCatch', title: 'Grilled Fish Surplus', weight: 3, tags: ['Non-Veg', 'Fragile'], status: 'pending', timestamp: '40 min ago', pickupWindow: '11:00 PM', imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a3a2750?w=800&auto=format&fit=crop&q=60', isUrgent: false },
+  { id: 'seed-3', hotelId: 'hotel-spiceRoute', title: 'Assorted Breads & Dal', weight: 12, tags: ['Veg', 'Bulk'], status: 'pending', timestamp: '1 hour ago', pickupWindow: '11:45 PM', imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=800&auto=format&fit=crop&q=60', isUrgent: false },
+  { id: 'seed-4', hotelId: 'hotel-cafeDelight', title: 'Pastries & Sandwiches', weight: 4, tags: ['Bakery', 'Cool'], status: 'pending', timestamp: '2 hours ago', pickupWindow: '08:00 AM', imageUrl: 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?w=800&auto=format&fit=crop&q=60', isUrgent: false },
 ];
 
 // Extra hotel maps for seed data
@@ -90,11 +95,26 @@ HOTEL_LOCATIONS['hotel-oceanCatch'] = { lat: 19.0210, lng: 72.8420 };
 HOTEL_LOCATIONS['hotel-spiceRoute'] = { lat: 19.0120, lng: 72.8550 };
 HOTEL_LOCATIONS['hotel-cafeDelight'] = { lat: 19.0250, lng: 72.8380 };
 
+// ── localStorage helpers (shared between tabs) ──
+
+function readFromStorage(): HotelDonation[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return SEED_DONATIONS;
+}
+
+function writeToStorage(donations: HotelDonation[]) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(donations));
+}
+
 
 export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [donations, setDonations] = useState<HotelDonation[]>([]);
   const [loading, setLoading] = useState(true);
   const useSupabase = useRef(isSupabaseConfigured());
+  const skipNextPersist = useRef(false);
 
   // ── Initial load ──
   useEffect(() => {
@@ -102,16 +122,40 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       loadFromSupabase();
       subscribeToRealtime();
     } else {
-      loadFromLocalStorage();
+      const data = readFromStorage();
+      setDonations(data);
+      setLoading(false);
     }
   }, []);
 
-  // Persist to localStorage as fallback
+  // ── Persist to localStorage on every change (localStorage mode) ──
   useEffect(() => {
     if (!useSupabase.current && donations.length > 0) {
-      localStorage.setItem('foodconnect_donations', JSON.stringify(donations));
+      if (skipNextPersist.current) {
+        skipNextPersist.current = false;
+        return;
+      }
+      writeToStorage(donations);
     }
   }, [donations]);
+
+  // ── Cross-tab sync: listen for localStorage changes from other tabs ──
+  useEffect(() => {
+    if (useSupabase.current) return;
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          skipNextPersist.current = true; // Don't re-persist what we just received
+          setDonations(updated);
+        } catch {}
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // ── Supabase loaders ──
 
@@ -196,7 +240,8 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } catch (err) {
       console.error('Supabase load error, falling back to localStorage:', err);
       useSupabase.current = false;
-      loadFromLocalStorage();
+      const data = readFromStorage();
+      setDonations(data);
     } finally {
       setLoading(false);
     }
@@ -215,29 +260,23 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       .subscribe();
   };
 
-  const loadFromLocalStorage = () => {
-    const saved = localStorage.getItem('foodconnect_donations');
-    if (saved) {
-      try { setDonations(JSON.parse(saved)); } catch { setDonations(SEED_DONATIONS); }
-    } else {
-      setDonations(SEED_DONATIONS);
-    }
-    setLoading(false);
-  };
-
   // ── Tracking simulation ──
   useEffect(() => {
     const interval = setInterval(() => {
-      setDonations(prev => prev.map(d => {
-        if (d.status === 'assigned' && d.tracking && d.tracking.active) {
-          let newProgress = d.tracking.progress + 1;
-          let newStatus = d.tracking.status;
-          if (newProgress >= 100) { newProgress = 100; newStatus = 'arrived'; }
-          return { ...d, tracking: { ...d.tracking, progress: newProgress, status: newStatus, lastUpdated: 'Live' } };
-        }
-        return d;
-      }));
-    }, 2000);
+      setDonations(prev => {
+        const hasTracking = prev.some(d => d.status === 'assigned' && d.tracking?.active);
+        if (!hasTracking) return prev; // Skip update if nothing to track
+        return prev.map(d => {
+          if (d.status === 'assigned' && d.tracking && d.tracking.active) {
+            let newProgress = d.tracking.progress + 1;
+            let newStatus = d.tracking.status;
+            if (newProgress >= 100) { newProgress = 100; newStatus = 'arrived'; }
+            return { ...d, tracking: { ...d.tracking, progress: newProgress, status: newStatus, lastUpdated: 'Live' } };
+          }
+          return d;
+        });
+      });
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -269,7 +308,11 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         tags: data.tags || [], status: 'pending', timestamp: 'Just now',
         pickupWindow: data.pickupWindow || 'Anytime', imageUrl: data.imageUrl, isUrgent: data.isUrgent,
       } as HotelDonation;
-      setDonations(prev => [newDonation, ...prev]);
+      setDonations(prev => {
+        const updated = [newDonation, ...prev];
+        writeToStorage(updated); // Immediately persist so other tabs see it
+        return updated;
+      });
     }
     sendLocalNotification('new_donation', '🍲 New Donation Posted', `${data.title || 'A donation'} (${data.weight || 0}kg) is now available for pickup.`, data.title);
   }, []);
@@ -287,7 +330,11 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       updates.updated_at = new Date().toISOString();
       await supabase.from('donations').update(updates).eq('id', id);
     } else {
-      setDonations(prev => prev.map(d => d.id === id ? { ...d, ...data } : d));
+      setDonations(prev => {
+        const updated = prev.map(d => d.id === id ? { ...d, ...data } : d);
+        writeToStorage(updated);
+        return updated;
+      });
     }
   }, []);
 
@@ -315,21 +362,25 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }).eq('id', donationId);
       }
     } else {
-      setDonations(prev => prev.map(d => {
-        if (d.id === donationId && d.activeRequest) {
-          const hotelLoc = getHotelLocation(d.hotelId);
-          return {
-            ...d, status: 'assigned', assignedVolunteer: d.activeRequest, activeRequest: undefined, pickupCode,
-            tracking: {
-              active: true,
-              currentLocation: { lat: hotelLoc.lat + (Math.random() * 0.01 - 0.005), lng: hotelLoc.lng + (Math.random() * 0.01 - 0.005), address: 'Volunteer Location' },
-              destination: { lat: hotelLoc.lat, lng: hotelLoc.lng, address: HOTEL_NAMES[d.hotelId] || 'Hotel' },
-              progress: 5, status: 'on_route', lastUpdated: 'Just now',
-            },
-          };
-        }
-        return d;
-      }));
+      setDonations(prev => {
+        const updated = prev.map(d => {
+          if (d.id === donationId && d.activeRequest) {
+            const hotelLoc = getHotelLocation(d.hotelId);
+            return {
+              ...d, status: 'assigned' as const, assignedVolunteer: d.activeRequest, activeRequest: undefined, pickupCode,
+              tracking: {
+                active: true,
+                currentLocation: { lat: hotelLoc.lat + (Math.random() * 0.01 - 0.005), lng: hotelLoc.lng + (Math.random() * 0.01 - 0.005), address: 'Volunteer Location' },
+                destination: { lat: hotelLoc.lat, lng: hotelLoc.lng, address: HOTEL_NAMES[d.hotelId] || 'Hotel' },
+                progress: 5, status: 'on_route' as const, lastUpdated: 'Just now',
+              },
+            };
+          }
+          return d;
+        });
+        writeToStorage(updated);
+        return updated;
+      });
     }
     const donation = donations.find(d => d.id === donationId);
     sendLocalNotification('request_accepted', '✅ Request Accepted!', `Your pickup request for "${donation?.title || 'a donation'}" has been accepted. Head to the hotel now!`, donationId);
@@ -339,7 +390,11 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (useSupabase.current) {
       await supabase.from('pickup_requests').update({ status: 'rejected' }).eq('donation_id', donationId).eq('status', 'pending');
     } else {
-      setDonations(prev => prev.map(d => d.id === donationId ? { ...d, activeRequest: undefined } : d));
+      setDonations(prev => {
+        const updated = prev.map(d => d.id === donationId ? { ...d, activeRequest: undefined } : d);
+        writeToStorage(updated);
+        return updated;
+      });
     }
     sendLocalNotification('request_rejected', '❌ Request Declined', `Your pickup request has been declined. Try other available donations.`, donationId);
   }, []);
@@ -348,9 +403,13 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (useSupabase.current) {
       await supabase.from('donations').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', donationId);
     } else {
-      setDonations(prev => prev.map(d => d.id === donationId ? {
-        ...d, status: 'completed', tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived', progress: 100 } : undefined,
-      } : d));
+      setDonations(prev => {
+        const updated = prev.map(d => d.id === donationId ? {
+          ...d, status: 'completed' as const, tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
+        } : d);
+        writeToStorage(updated);
+        return updated;
+      });
     }
   }, []);
 
@@ -361,9 +420,13 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (useSupabase.current) {
       supabase.from('donations').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', donationId);
     }
-    setDonations(prev => prev.map(d => d.id === donationId ? {
-      ...d, status: 'completed', tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived', progress: 100 } : undefined,
-    } : d));
+    setDonations(prev => {
+      const updated = prev.map(d => d.id === donationId ? {
+        ...d, status: 'completed' as const, tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
+      } : d);
+      writeToStorage(updated);
+      return updated;
+    });
     sendLocalNotification('pickup_completed', '🎉 Pickup Complete!', `Donation "${donation?.title || ''}" has been successfully verified and completed.`, donationId);
     return true;
   }, [donations]);
@@ -378,12 +441,16 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         status: 'pending',
       });
     } else {
-      setDonations(prev => prev.map(d => {
-        if (d.id === donationId && d.status === 'pending' && !d.activeRequest) {
-          return { ...d, activeRequest: volunteerInfo };
-        }
-        return d;
-      }));
+      setDonations(prev => {
+        const updated = prev.map(d => {
+          if (d.id === donationId && d.status === 'pending' && !d.activeRequest) {
+            return { ...d, activeRequest: volunteerInfo };
+          }
+          return d;
+        });
+        writeToStorage(updated);
+        return updated;
+      });
     }
     const donation = donations.find(d => d.id === donationId);
     sendLocalNotification('pickup_requested', '🙋 New Pickup Request', `${volunteerInfo.name} wants to pick up "${donation?.title || 'your donation'}". Review the request!`, donationId);
