@@ -88,35 +88,36 @@ CREATE POLICY "requests_update" ON public.pickup_requests FOR UPDATE USING (true
 ALTER PUBLICATION supabase_realtime ADD TABLE public.donations;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.pickup_requests;
 
+-- Default data removed, using live Supabase Auth now.
+
 -- ============================================
--- Seed demo data
+-- Authentication Trigger (Sync auth.users to public.profiles)
 -- ============================================
 
--- Demo Hotel
-INSERT INTO public.profiles (id, email, name, role, hotel_name, phone, lat, lng)
-VALUES (
-  '11111111-1111-1111-1111-111111111111',
-  'hotel@demo.com',
-  'Demo Hotel Manager',
-  'hotel',
-  'Demo Hotel',
-  '+91 98765 43210',
-  19.0178,
-  72.8478
-) ON CONFLICT (email) DO NOTHING;
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger AS $$
+BEGIN
+  INSERT INTO public.profiles (
+    id, email, name, role, phone, hotel_name, address, manager_number, license_number, age, vehicle
+  )
+  VALUES (
+    new.id,
+    new.email,
+    COALESCE(new.raw_user_meta_data->>'name', 'Unknown User'),
+    COALESCE(new.raw_user_meta_data->>'role', 'volunteer'),
+    new.raw_user_meta_data->>'phone',
+    new.raw_user_meta_data->>'hotelName',
+    new.raw_user_meta_data->>'address',
+    new.raw_user_meta_data->>'managerNumber',
+    new.raw_user_meta_data->>'licenseNumber',
+    NULLIF(new.raw_user_meta_data->>'age', '')::integer,
+    new.raw_user_meta_data->>'vehicle'
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Demo Volunteer
-INSERT INTO public.profiles (id, email, name, role, phone, vehicle)
-VALUES (
-  '22222222-2222-2222-2222-222222222222',
-  'volunteer@demo.com',
-  'Demo Volunteer',
-  'volunteer',
-  '+91 91234 56789',
-  'Bicycle'
-) ON CONFLICT (email) DO NOTHING;
-
--- Seed donations from hotels
-INSERT INTO public.donations (hotel_id, title, weight, tags, status, pickup_window, image_url) VALUES
-('11111111-1111-1111-1111-111111111111', 'Veg Biryani & Curry', 6, ARRAY['Veg', 'Hot'], 'pending', '10:30 PM', 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format&fit=crop&q=60'),
-('11111111-1111-1111-1111-111111111111', 'Pastries & Sandwiches', 4, ARRAY['Bakery', 'Cool'], 'pending', '08:00 AM', 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?w=800&auto=format&fit=crop&q=60');
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();

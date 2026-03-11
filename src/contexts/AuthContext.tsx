@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { User, Hotel, UserRole } from '../types';
 import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../lib/firebase';
 import { ConfirmationResult } from 'firebase/auth';
+import supabase from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -24,6 +25,14 @@ export const useAuth = () => {
   return context;
 };
 
+// Helper to normalize strings for emails
+const normalizeString = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
+const getHotelEmail = (name: string) => `${normalizeString(name)}@foodconnect.app`;
+const getVolEmail = (name: string) => `${normalizeString(name)}-vol@foodconnect.app`;
+const getPhoneEmail = (phone: string) => `${normalizeString(phone)}@foodconnect.app`;
+// Secure constant password for phone-login users in this demo app
+const PHONE_AUTH_PASSWORD = 'FoodConnectPhoneLogin2024!';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [hotelProfile, setHotelProfile] = useState<Hotel | null>(null);
@@ -32,187 +41,136 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const recaptchaVerifierRef = useRef<any>(null);
 
   useEffect(() => {
-    // Check local storage for existing session
-    const storedUser = localStorage.getItem('foodconnect_user');
-    const storedProfile = localStorage.getItem('foodconnect_profile');
-
-    if (storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        if (storedProfile) {
-          setHotelProfile(JSON.parse(storedProfile));
-        }
-      } catch (e) {
-        console.error("Failed to parse stored auth data", e);
-        localStorage.removeItem('foodconnect_user');
-        localStorage.removeItem('foodconnect_profile');
+    // Check active session on load
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        fetchAndSetProfile(session.user);
+      } else {
+        setLoading(false);
       }
-    } else {
-      // Initialize default demo users
-      const users = JSON.parse(localStorage.getItem('foodconnect_users_db') || '{}');
+    });
 
-      // Demo Hotel
-      const demoHotelEmail = 'demohotel@foodconnect.app';
-      if (!users[demoHotelEmail]) {
-        const demoUid = '11111111-1111-1111-1111-111111111111';
-        const demoUser: User = {
-          id: demoUid,
-          name: 'Demo Hotel',
-          email: demoHotelEmail,
-          role: 'hotel',
-          hotelName: 'Demo Hotel',
-        };
-        const demoProfile: Hotel = {
-          id: demoUid,
-          hotelName: 'Demo Hotel',
-          address: '123 Demo St, City',
-          managerNumber: '+1234567890',
-          licenseNumber: 'DEMO-123',
-          createdAt: new Date().toISOString()
-        };
-        users[demoHotelEmail] = { password: 'password', user: demoUser, profile: demoProfile };
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        fetchAndSetProfile(session.user);
+      } else {
+        setUser(null);
+        setHotelProfile(null);
+        setLoading(false);
       }
+    });
 
-      // Demo Volunteer
-      const demoVolEmail = 'demovolunteer@foodconnect.app';
-      if (!users[demoVolEmail]) {
-        const demoUid = '22222222-2222-2222-2222-222222222222';
-        const demoUser: User = {
-          id: demoUid,
-          name: 'Demo Volunteer',
-          email: demoVolEmail,
-          role: 'volunteer',
-          phone: '+91 98765 43210',
-        };
-        users[demoVolEmail] = { password: 'password', user: demoUser, profile: null };
-      }
-
-      localStorage.setItem('foodconnect_users_db', JSON.stringify(users));
-    }
-    setLoading(false);
+    return () => subscription.unsubscribe();
   }, []);
 
+  const fetchAndSetProfile = async (authUser: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+        
+      if (error) throw error;
+      
+      const role = data.role as UserRole;
+      const appUser: User = {
+        id: data.id,
+        name: data.name,
+        email: data.email,
+        role,
+        phone: data.phone,
+        avatar: data.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=60',
+      };
+
+      if (role === 'hotel') {
+        appUser.hotelName = data.hotel_name;
+        appUser.managerNumber = data.manager_number;
+        appUser.licenseNumber = data.license_number;
+        
+        const profile: Hotel = {
+          id: data.id,
+          hotelName: data.hotel_name,
+          address: data.address,
+          managerNumber: data.manager_number,
+          licenseNumber: data.license_number,
+          createdAt: data.created_at,
+        };
+        setHotelProfile(profile);
+      } else {
+        appUser.age = data.age;
+        appUser.vehicle = data.vehicle;
+        appUser.ngoName = data.ngo_name;
+        appUser.ngoNumber = data.ngo_number;
+        appUser.contactPerson = data.contact_person;
+      }
+      
+      setUser(appUser);
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+      setUser(null);
+      setHotelProfile(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const register = async (role: UserRole, data: any, password: string) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    const users = JSON.parse(localStorage.getItem('foodconnect_users_db') || '{}');
-
     let email: string;
-    let newUser: User;
-    let profile: Hotel | null = null;
-
     if (role === 'hotel') {
-      email = data.hotelName.toLowerCase().replace(/[^a-z0-9]/g, '') + '@foodconnect.app';
-      if (users[email]) {
-        throw new Error('An account with this hotel name already exists.');
-      }
-      const uid = 'user-' + Date.now();
-      newUser = {
-        id: uid,
-        name: data.hotelName,
-        email,
-        role: 'hotel',
-        hotelName: data.hotelName,
-      };
-      profile = {
-        id: uid,
-        hotelName: data.hotelName,
-        address: data.address || '',
-        managerNumber: data.managerNumber || '',
-        licenseNumber: data.licenseNumber || '',
-        createdAt: new Date().toISOString()
-      };
+      email = getHotelEmail(data.hotelName);
     } else {
-      email = (data.name || 'volunteer').toLowerCase().replace(/[^a-z0-9]/g, '') + '-vol@foodconnect.app';
-      if (users[email]) {
-        email = email.replace('@', Date.now() + '@');
-      }
-      const uid = 'user-' + Date.now();
-      newUser = {
-        id: uid,
-        name: data.name || 'Volunteer',
-        email,
-        role: 'volunteer',
-        phone: data.phone || '',
-        age: data.age,
-        vehicle: data.vehicle,
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=60',
-      };
+      email = getVolEmail(data.name || 'volunteer');
     }
 
-    users[email] = { password, user: newUser, profile };
-    localStorage.setItem('foodconnect_users_db', JSON.stringify(users));
+    const { data: authData, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          role,
+          name: role === 'hotel' ? data.hotelName : data.name || 'Volunteer',
+          phone: data.phone || data.managerNumber || '',
+          hotelName: data.hotelName, // Note: trigger mapping expects hotel_name to be hotelName in metadata
+          address: data.address,
+          managerNumber: data.managerNumber, // Trigger expects managerNumber
+          licenseNumber: data.licenseNumber, // Trigger expects licenseNumber
+          age: data.age,
+          vehicle: data.vehicle,
+        }
+      }
+    });
 
-    localStorage.setItem('foodconnect_user', JSON.stringify(newUser));
-    if (profile) localStorage.setItem('foodconnect_profile', JSON.stringify(profile));
-
-    setUser(newUser);
-    setHotelProfile(profile);
+    if (error) throw error;
+    // The onAuthStateChange will handle fetching the profile
   };
 
   const login = async (role: UserRole, identifier: string, password: string) => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    const users = JSON.parse(localStorage.getItem('foodconnect_users_db') || '{}');
-
-    let userData: any = null;
-
-    if (role === 'hotel') {
-      // Try direct email lookup
-      const email = identifier.toLowerCase().replace(/[^a-z0-9]/g, '') + '@foodconnect.app';
-      userData = users[email];
-
-      // Fallback: match by hotelName
-      if (!userData) {
-        const normalizedInput = identifier.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const foundEmail = Object.keys(users).find(key => {
-          const u = users[key];
-          if (u.user?.role !== 'hotel') return false;
-          const storedName = (u.profile?.hotelName || u.user?.hotelName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          return storedName === normalizedInput;
-        });
-        if (foundEmail) userData = users[foundEmail];
-      }
-    } else {
-      // Volunteer: look up by phone or name
-      const normalizedInput = identifier.toLowerCase().replace(/[^a-z0-9]/g, '');
-      const foundEmail = Object.keys(users).find(key => {
-        const u = users[key];
-        if (u.user?.role !== 'volunteer') return false;
-        const storedName = (u.user?.name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const storedPhone = (u.user?.phone || '').replace(/[^0-9]/g, '');
-        return storedName === normalizedInput || storedPhone.includes(normalizedInput.replace(/[^0-9]/g, ''));
-      });
-      if (foundEmail) userData = users[foundEmail];
+    // User might input email directly, otherwise we construct it
+    let email = identifier;
+    if (!identifier.includes('@')) {
+      email = role === 'hotel' ? getHotelEmail(identifier) : getVolEmail(identifier);
     }
 
-    if (!userData || userData.password !== password) {
-      throw new Error(role === 'hotel' ? 'Invalid hotel name or password.' : 'Invalid credentials.');
-    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    const { user: foundUser, profile } = userData;
-
-    localStorage.setItem('foodconnect_user', JSON.stringify(foundUser));
-    if (profile) localStorage.setItem('foodconnect_profile', JSON.stringify(profile));
-
-    setUser(foundUser);
-    setHotelProfile(profile || null);
+    if (error) throw new Error(error.message);
   };
 
   const logout = async () => {
-    localStorage.removeItem('foodconnect_user');
-    localStorage.removeItem('foodconnect_profile');
-    setUser(null);
-    setHotelProfile(null);
-    try { await auth.signOut(); } catch { /* ignore */ }
+    try { await auth.signOut(); } catch { /* ignore firebase error */ }
+    const { error } = await supabase.auth.signOut();
+    if (error) console.error('Sign out error', error);
   };
 
   // ── Firebase Phone Auth ──
 
   const sendPhoneOtp = async (phoneNumber: string, recaptchaContainerId: string) => {
     try {
-      // Clean up previous verifier
       if (recaptchaVerifierRef.current) {
         try { recaptchaVerifierRef.current.clear(); } catch { /* ignore */ }
       }
@@ -226,7 +184,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const confirmation = await signInWithPhoneNumber(auth, phoneNumber, verifier);
       confirmationResultRef.current = confirmation;
     } catch (err: any) {
-      // Clean up on error
       if (recaptchaVerifierRef.current) {
         try { recaptchaVerifierRef.current.clear(); } catch { /* ignore */ }
         recaptchaVerifierRef.current = null;
@@ -244,69 +201,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await confirmationResultRef.current.confirm(otp);
       const firebaseUser = result.user;
       const phoneNum = firebaseUser.phoneNumber || '';
+      const email = getPhoneEmail(phoneNum);
 
-      // Check if user already exists in our local DB
-      const users = JSON.parse(localStorage.getItem('foodconnect_users_db') || '{}');
-      const existingEmail = Object.keys(users).find(key => {
-        const u = users[key];
-        return u.user?.phone === phoneNum || u.user?.id === firebaseUser.uid;
+      // Check if user exists in Supabase by attempting to sign in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: PHONE_AUTH_PASSWORD,
       });
 
-      if (existingEmail) {
-        // Existing user — log them in
-        const { user: foundUser, profile } = users[existingEmail];
-        localStorage.setItem('foodconnect_user', JSON.stringify(foundUser));
-        if (profile) localStorage.setItem('foodconnect_profile', JSON.stringify(profile));
-        setUser(foundUser);
-        setHotelProfile(profile || null);
-      } else {
-        // New user — create profile
-        const uid = firebaseUser.uid;
+      if (signInError) {
+        // User likely does not exist, so register them
         const displayName = extraData?.name || firebaseUser.displayName || 'User';
-        const email = `${uid}@phone.foodconnect.app`;
-        let newUser: User;
-        let profile: Hotel | null = null;
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password: PHONE_AUTH_PASSWORD,
+          options: {
+            data: {
+              role,
+              name: role === 'hotel' ? extraData?.hotelName || displayName : displayName,
+              phone: phoneNum,
+              hotelName: extraData?.hotelName,
+              address: extraData?.address,
+              managerNumber: phoneNum,
+              licenseNumber: extraData?.licenseNumber,
+              age: extraData?.age,
+              vehicle: extraData?.vehicle,
+            }
+          }
+        });
 
-        if (role === 'hotel') {
-          newUser = {
-            id: uid,
-            name: extraData?.hotelName || displayName,
-            email,
-            role: 'hotel',
-            hotelName: extraData?.hotelName || displayName,
-            phone: phoneNum,
-          };
-          profile = {
-            id: uid,
-            hotelName: extraData?.hotelName || displayName,
-            address: extraData?.address || '',
-            managerNumber: phoneNum,
-            licenseNumber: extraData?.licenseNumber || '',
-            createdAt: new Date().toISOString(),
-          };
-        } else {
-          newUser = {
-            id: uid,
-            name: displayName,
-            email,
-            role: 'volunteer',
-            phone: phoneNum,
-            age: extraData?.age,
-            vehicle: extraData?.vehicle,
-            avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=60',
-          };
+        if (signUpError) {
+          throw new Error('Failed to create account: ' + signUpError.message);
         }
-
-        users[email] = { password: '', user: newUser, profile };
-        localStorage.setItem('foodconnect_users_db', JSON.stringify(users));
-        localStorage.setItem('foodconnect_user', JSON.stringify(newUser));
-        if (profile) localStorage.setItem('foodconnect_profile', JSON.stringify(profile));
-        setUser(newUser);
-        setHotelProfile(profile);
       }
-
+      
       confirmationResultRef.current = null;
     } catch (err: any) {
+      // Don't leak exact Supabase auth errors if Firebase succeeds but Supabase fails
       if (err.code === 'auth/invalid-verification-code') {
         throw new Error('Invalid OTP. Please check and try again.');
       }
