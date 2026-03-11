@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Upload, X, Loader2, Sparkles, Wand2, ArrowRight, CheckCircle, Minus, Plus, Clock, AlertTriangle } from 'lucide-react';
-import { analyzeFoodImage, editFoodImage } from '../../services/geminiService';
+import { analyzeFoodPhoto } from '../../lib/openrouter';
 import { HotelDonation } from '../../types';
 
 const AVAILABLE_TAGS = ['Rice', 'Curry', 'Bread', 'Dessert', 'Veg', 'Non-Veg', 'Dairy', 'Fruit'];
@@ -38,11 +38,11 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
       
       setIsAnalyzing(true);
       try {
-        const result = await analyzeFoodImage(selectedFile);
+        const result = await analyzeFoodPhoto(selectedFile);
         setTitle(result.title);
         const newTags = new Set([...selectedTags, ...result.tags.filter((t: string) => AVAILABLE_TAGS.includes(t))]);
         setSelectedTags(Array.from(newTags));
-        if (result.weightEstimate) setQuantity(result.weightEstimate);
+        if (result.weightEstimate) setQuantity(Math.round(result.weightEstimate));
       } catch (err) { console.error("Analysis failed", err); }
       finally { setIsAnalyzing(false); }
     }
@@ -52,11 +52,10 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
     if (!file || !editPrompt) return;
     setIsEditing(true);
     try {
-        const newImageUrl = await editFoodImage(file, editPrompt);
-        setPreviewUrl(newImageUrl);
-        setEditPrompt("");
-    } catch (e) { console.error("Edit failed", e); alert("Failed to edit image"); }
-    finally { setIsEditing(false); }
+        // Image editing not available via OpenRouter — placeholder
+        alert('AI image editing is not available in this version.');
+    } catch (e) { console.error("Edit failed", e); }
+    finally { setIsEditing(false); setEditPrompt(''); }
   }
 
   const toggleTag = (tag: string) => {
@@ -127,7 +126,7 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
                </div>
                {isAnalyzing && (
                  <div className="absolute inset-0 bg-white/80 dark:bg-stone-900/80 backdrop-blur-sm flex items-center justify-center flex-col gap-2 text-forest-700 dark:text-forest-400">
-                    <Loader2 size={32} className="animate-spin" /><span className="text-sm font-medium">Analyzing food with Gemini...</span>
+                    <Loader2 size={32} className="animate-spin" /><span className="text-sm font-medium">Analyzing food with AI...</span>
                  </div>
                )}
                <div className="absolute bottom-0 inset-x-0 bg-white/95 dark:bg-stone-900/95 border-t border-stone-200 dark:border-stone-800 p-3 flex gap-2 items-center">

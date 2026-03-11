@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import NotificationBell from '../shared/NotificationBell';
+import AIChatWidget from '../shared/AIChatWidget';
 
 interface HotelLayoutProps {
   children: React.ReactNode;
@@ -114,6 +115,7 @@ const HotelLayout: React.FC<HotelLayoutProps> = ({ children, activeTab, onNaviga
           <div className="max-w-5xl mx-auto w-full space-y-8">{children}</div>
         </div>
       </main>
+      <AIChatWidget role="hotel" />
     </div>
   );
 };

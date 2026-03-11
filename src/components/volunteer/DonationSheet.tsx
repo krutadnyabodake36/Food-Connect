@@ -1,13 +1,17 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { Clock, ChevronDown, ChevronRight, Navigation, CheckCircle2, Minus, Plus, X, MapPin, Timer, Utensils, Send, Loader2 } from 'lucide-react';
+import { Clock, ChevronDown, ChevronRight, Navigation, CheckCircle2, Minus, Plus, X, MapPin, Timer, Utensils, Send, Loader2, ShieldCheck } from 'lucide-react';
 import { DonationSheetProps, VolunteerDonation } from '../../types';
+import { getFoodSafetyTips } from '../../lib/openrouter';
 
 const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, onCloseDetail, onSelectDonation, onAcceptPickup, isNavigating }) => {
   const [sheetView, setSheetView] = useState<'collapsed' | 'expanded' | 'detail'>('collapsed');
   const [quantityToPick, setQuantityToPick] = useState(1);
   const [requestSent, setRequestSent] = useState<Set<string>>(new Set());
   const [sendingRequest, setSendingRequest] = useState(false);
+  const [safetyTips, setSafetyTips] = useState<string[]>([]);
+  const [showSafetyTips, setShowSafetyTips] = useState(true);
+  const [loadingTips, setLoadingTips] = useState(false);
 
   const selectedDonation = donations.find(d => d.id === selectedId) as any;
 
@@ -29,6 +33,22 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
       setSendingRequest(false);
     }, 800);
   };
+
+  // Fetch safety tips when navigating
+  useEffect(() => {
+    if (isNavigating && selectedDonation) {
+      setLoadingTips(true);
+      getFoodSafetyTips(
+        selectedDonation.foodItem || selectedDonation.title || '',
+        selectedDonation.tags || []
+      )
+        .then(tips => setSafetyTips(tips))
+        .catch(() => setSafetyTips([]))
+        .finally(() => setLoadingTips(false));
+    } else {
+      setSafetyTips([]);
+    }
+  }, [isNavigating, selectedDonation?.id]);
 
   // Navigation mode — volunteer is headed to the hotel
   if (isNavigating && selectedDonation) {
@@ -67,6 +87,34 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
               ))}
             </div>
             <p className="text-xs text-stone-400 mt-3">Show this code to the hotel staff to confirm your pickup</p>
+          </div>
+        )}
+        {/* Food Safety Tips */}
+        {(loadingTips || safetyTips.length > 0) && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl overflow-hidden mb-4">
+            <button onClick={() => setShowSafetyTips(!showSafetyTips)} className="w-full flex items-center justify-between px-4 py-3">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={16} className="text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">Food Safety Tips</span>
+              </div>
+              <ChevronDown size={14} className={`text-blue-500 transition-transform ${showSafetyTips ? 'rotate-180' : ''}`} />
+            </button>
+            {showSafetyTips && (
+              <div className="px-4 pb-3 space-y-2">
+                {loadingTips ? (
+                  <div className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+                    <Loader2 size={12} className="animate-spin" /> Getting tips...
+                  </div>
+                ) : (
+                  safetyTips.map((tip, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <span className="text-xs text-blue-500 font-bold mt-0.5">{i + 1}.</span>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">{tip}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
         <button onClick={onCloseDetail} className="w-full py-3.5 bg-forest-700 hover:bg-forest-800 text-white rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-forest-900/20 transition-colors active:scale-[0.98]">

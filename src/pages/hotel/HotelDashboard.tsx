@@ -1,7 +1,7 @@
 import React from 'react';
 import { HotelDonation } from '../../types';
 import { Package, Utensils, Truck, MapPin } from 'lucide-react';
-import { findNearbyCharities } from '../../services/geminiService';
+import WasteInsights from '../../components/hotel/WasteInsights';
 
 interface DashboardProps {
     donations: HotelDonation[];
@@ -22,8 +22,7 @@ const HotelDashboard: React.FC<DashboardProps> = ({ donations }) => {
     try {
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(async (position) => {
-                const results = await findNearbyCharities(position.coords.latitude, position.coords.longitude);
-                setNearbyCharities(results);
+                // Charity locator disabled (was Gemini-powered)
                 setGroundingLoading(false);
             }, () => { setGroundingLoading(false); alert("Could not get location"); });
         }
@@ -91,6 +90,9 @@ const HotelDashboard: React.FC<DashboardProps> = ({ donations }) => {
           </table>
         </div>
       </div>
+
+      {/* AI Waste Insights */}
+      <WasteInsights donations={donations} />
       
        <div className="bg-forest-50 dark:bg-forest-900/20 border border-forest-100 dark:border-forest-800/50 rounded-xl p-6">
           <div className="flex items-start gap-4">

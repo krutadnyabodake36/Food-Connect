@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDonations, getHotelName, getHotelLocation } from '../contexts/DonationContext';
 import NotificationBell from '../components/shared/NotificationBell';
+import AIChatWidget from '../components/shared/AIChatWidget';
 
 type View = 'map' | 'dashboard' | 'impact' | 'settings';
 
@@ -263,6 +264,7 @@ const VolunteerApp: React.FC = () => {
           </AnimatePresence>
         </div>
       </main>
+      <AIChatWidget role="volunteer" />
     </div>
   );
 };
