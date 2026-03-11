@@ -143,6 +143,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     if (error) throw error;
+    
+    // Auto-login because Supabase might not return a session instantly if Email Confirmations are on,
+    // but our Postgres trigger auto-confirms the email!
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    
+    if (signInError) throw signInError;
     // The onAuthStateChange will handle fetching the profile
   };
 
