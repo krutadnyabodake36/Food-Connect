@@ -4,6 +4,7 @@ import L from 'leaflet';
 import useSupercluster from 'use-supercluster';
 import { VolunteerMapProps, VolunteerDonation } from '../../types';
 import { fetchRoute, RouteResult } from '../../lib/routeService';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const USER_LOC: [number, number] = [19.0176, 72.8562];
 
@@ -11,7 +12,7 @@ const createDonationIcon = (donation: VolunteerDonation, isSelected: boolean) =>
   const isVeg = donation.tags.some(t => t.toLowerCase() === 'veg');
   const dotColor = isVeg ? '#22c55e' : '#ef4444';
   const borderColor = isSelected ? '#3b82f6' : '#ffffff';
-  const size = isSelected ? 48 : 40;
+  const size = isSelected ? 52 : 44;
   
   return L.divIcon({
     className: 'custom-map-marker',
@@ -21,14 +22,15 @@ const createDonationIcon = (donation: VolunteerDonation, isSelected: boolean) =>
       <div style="
         width: ${size}px; height: ${size}px; border-radius: 50%;
         background: white; border: 3px solid ${borderColor};
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         display: flex; align-items: center; justify-content: center;
-        transition: all 0.2s; position: relative; overflow: hidden;
-      ">
+        transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; overflow: visible;
+        transform: scale(${isSelected ? 1.05 : 1});
+      " class="${isSelected ? 'shadow-2xl' : 'hover:scale-110'}">
         <img src="${donation.imageUrl}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />
-        <div style="
-          position: absolute; bottom: -2px; right: -2px;
-          width: 14px; height: 14px; border-radius: 50%;
+        <div class="marker-pulse-active" style="
+          position: absolute; bottom: -4px; right: -4px;
+          width: 16px; height: 16px; border-radius: 50%;
           background: ${dotColor}; border: 2px solid white;
         "></div>
       </div>
@@ -174,9 +176,14 @@ const MapContent: React.FC<VolunteerMapProps & { donations: VolunteerDonation[];
 
   useEffect(() => { updateMarkers(); }, [updateMarkers]);
 
+  const { theme } = useTheme();
+  const mapStyleUrl = theme === 'dark' 
+    ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+    : "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+
   return (
     <>
-      <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+      <TileLayer url={mapStyleUrl} />
       {routeCoords.length > 1 && (
         <Polyline
           positions={routeCoords}

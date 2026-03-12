@@ -124,7 +124,7 @@ const VolunteerApp: React.FC = () => {
       )}
 
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-72 bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 transform transition-transform duration-300 ease-in-out shadow-xl lg:shadow-none flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-50 w-72 glass-sidebar lg:my-4 lg:ml-4 lg:rounded-3xl transform transition-transform duration-300 ease-in-out shadow-xl lg:shadow-2xl flex-shrink-0
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="h-full flex flex-col">

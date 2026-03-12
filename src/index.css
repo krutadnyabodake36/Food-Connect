@@ -53,3 +53,72 @@
 .leaflet-container {
   font-family: 'Inter', sans-serif;
 }
+
+/* ----- Premium Spatial Dashboard Additions ----- */
+
+/* Glassmorphism Panel */
+.glass-panel {
+  @apply bg-white/70 dark:bg-stone-900/60 backdrop-blur-xl border border-white/50 dark:border-white/10 shadow-lg shadow-stone-200/50 dark:shadow-black/40;
+}
+
+.glass-sidebar {
+  @apply bg-white/80 dark:bg-stone-900/70 backdrop-blur-2xl border-white/60 dark:border-white/10 shadow-2xl;
+}
+
+/* 3D Depth & Tilt Wrappers (Apply over parent relative to content) */
+.preserve-3d {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+/* Animated Gradient Text */
+.animate-gradient-text {
+  background: linear-gradient(to right, #268a5b, #10b981, #3b82f6, #268a5b);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: shine 4s linear infinite;
+}
+.dark .animate-gradient-text {
+  background: linear-gradient(to right, #5cc78f, #34d399, #60a5fa, #5cc78f);
+  background-size: 200% auto;
+  color: transparent;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: shine 4s linear infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
+}
+
+/* Pulse animation for map markers */
+@keyframes marker-pulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+.marker-pulse-active {
+  animation: marker-pulse 2s infinite;
+}
+
+/* Animated Mesh Gradient */
+.animate-mesh-bg {
+  background: linear-gradient(120deg, #f3e8ff, #e0e7ff, #fdf4ff);
+  background-size: 200% 200%;
+  animation: mesh-wave 8s ease infinite;
+}
+.dark .animate-mesh-bg {
+  background: linear-gradient(120deg, rgba(88,28,135,0.4), rgba(49,46,129,0.4), rgba(112,26,117,0.4));
+  background-size: 200% 200%;
+  animation: mesh-wave 8s ease infinite;
+}
+
+@keyframes mesh-wave {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}

@@ -39,14 +39,15 @@ const WasteInsights: React.FC<WasteInsightsProps> = ({ donations }) => {
 
   if (!insights && !loading) {
     return (
-      <div className="bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/40 rounded-xl p-5">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-violet-100 dark:bg-violet-800/50 rounded-xl flex items-center justify-center">
-            <Brain size={20} className="text-violet-600 dark:text-violet-400" />
+      <div className="glass-panel animate-mesh-bg border border-violet-200/50 dark:border-violet-800/50 rounded-2xl p-6 relative overflow-hidden group">
+        <div className="absolute inset-0 bg-white/40 dark:bg-stone-900/40 backdrop-blur-[2px]"></div>
+        <div className="relative z-10 flex items-center gap-4 mb-4">
+          <div className="w-12 h-12 bg-violet-100/80 dark:bg-violet-900/80 rounded-2xl flex items-center justify-center shadow-lg shadow-violet-500/20 group-hover:scale-110 group-hover:rotate-6 transition-transform duration-300">
+            <Brain size={24} className="text-violet-700 dark:text-violet-300" />
           </div>
           <div>
-            <h3 className="font-semibold text-stone-900 dark:text-stone-100 text-sm">AI Waste Insights</h3>
-            <p className="text-xs text-stone-500 dark:text-stone-400">Analyze your donation patterns</p>
+            <h3 className="font-bold text-lg text-violet-950 dark:text-violet-100">AI Waste Insights</h3>
+            <p className="text-sm font-medium text-violet-700/80 dark:text-violet-300/80">Analyze your donation patterns</p>
           </div>
         </div>
         {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
@@ -63,22 +64,27 @@ const WasteInsights: React.FC<WasteInsightsProps> = ({ donations }) => {
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/40 rounded-xl p-6 flex flex-col items-center justify-center gap-3">
-        <Loader2 size={28} className="animate-spin text-violet-600 dark:text-violet-400" />
-        <p className="text-sm text-stone-600 dark:text-stone-400 font-medium">Analyzing your donation patterns...</p>
+      <div className="glass-panel animate-mesh-bg border border-violet-200/50 dark:border-violet-800/50 rounded-2xl p-8 flex flex-col items-center justify-center gap-4 shadow-xl">
+        <div className="p-4 bg-white/50 dark:bg-stone-900/50 rounded-full backdrop-blur-md">
+          <Loader2 size={32} className="animate-spin text-violet-600 dark:text-violet-400" />
+        </div>
+        <p className="text-sm text-violet-900 dark:text-violet-200 font-bold tracking-wide">Analyzing patterns...</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-100 dark:border-violet-800/40 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Brain size={18} className="text-violet-600 dark:text-violet-400" />
-          <h3 className="font-semibold text-stone-900 dark:text-stone-100 text-sm">AI Waste Insights</h3>
+    <div className="glass-panel animate-mesh-bg border border-violet-200/50 dark:border-violet-800/50 rounded-2xl p-6 relative overflow-hidden shadow-xl shadow-violet-500/5">
+      <div className="absolute inset-0 bg-white/60 dark:bg-stone-900/60 backdrop-blur-md"></div>
+      <div className="relative z-10 flex items-center justify-between mb-5">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-violet-100 dark:bg-violet-900/50 rounded-lg shadow-inner">
+            <Brain size={20} className="text-violet-700 dark:text-violet-300" />
+          </div>
+          <h3 className="font-bold text-lg text-violet-950 dark:text-violet-100">AI Waste Insights</h3>
         </div>
-        <button onClick={handleAnalyze} className="p-1.5 text-stone-400 hover:text-violet-600 transition-colors rounded-lg hover:bg-white/50">
-          <RefreshCw size={14} />
+        <button onClick={handleAnalyze} className="p-2 text-violet-500/70 hover:text-violet-700 bg-white/50 dark:bg-stone-800/50 hover:bg-white dark:hover:bg-stone-800 transition-all rounded-xl shadow-sm active:scale-95">
+          <RefreshCw size={16} />
         </button>
       </div>
 
@@ -88,13 +94,13 @@ const WasteInsights: React.FC<WasteInsightsProps> = ({ donations }) => {
         </p>
       )}
 
-      <div className="space-y-2.5">
+      <div className="relative z-10 space-y-3">
         {insights?.insights.map((insight, i) => (
-          <div key={i} className="flex items-start gap-3 bg-white/70 dark:bg-stone-800/50 rounded-lg p-3 border border-stone-100 dark:border-stone-700/50">
-            <span className="text-lg flex-shrink-0 mt-0.5">{insight.icon}</span>
+          <div key={i} className="flex items-start gap-4 bg-white/80 dark:bg-stone-800/80 backdrop-blur-xl rounded-xl p-4 border border-violet-100 dark:border-violet-800/50 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-300">
+            <span className="text-2xl flex-shrink-0 mt-0.5 filter drop-shadow-sm">{insight.icon}</span>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-stone-900 dark:text-stone-100">{insight.title}</p>
-              <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">{insight.description}</p>
+              <p className="text-[15px] font-bold text-stone-900 dark:text-stone-100 leading-tight">{insight.title}</p>
+              <p className="text-xs font-medium text-stone-600 dark:text-stone-400 mt-1.5 leading-relaxed">{insight.description}</p>
             </div>
           </div>
         ))}
