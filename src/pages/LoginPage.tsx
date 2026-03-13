@@ -119,7 +119,7 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-white flex font-sans">
+    <div className="min-h-screen w-full bg-stone-50 dark:bg-stone-950 flex font-sans relative overflow-hidden selection:bg-forest-500/30">
       {/* Left Side - Image & Branding (desktop only) */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-forest-900">
         <div className="absolute inset-0">
@@ -151,7 +151,7 @@ const LoginPage: React.FC = () => {
             className="max-w-md"
           >
             <h1 className="text-4xl md:text-5xl font-serif font-bold mb-6 leading-tight">
-              Turn Surplus into <span className="text-forest-300">Sustenance</span>
+              Turn Surplus into <span className="text-transparent bg-clip-text bg-gradient-to-r from-forest-300 to-emerald-200">Sustenance</span>
             </h1>
             <p className="text-lg text-stone-200 leading-relaxed">
               Join our network of conscious partners bridging the gap between abundance and need. Your contribution makes a difference.
@@ -164,13 +164,15 @@ const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8">
+      {/* Right Side - Login Form with Spatial Background */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 animate-mesh-bg relative">
+        <div className="absolute inset-0 bg-white/40 dark:bg-stone-950/40 backdrop-blur-[2px]"></div>
+        
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5 }}
-          className="w-full max-w-[420px]"
+          transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
+          className="w-full max-w-[440px] glass-panel p-8 sm:p-10 rounded-3xl relative z-10 shadow-2xl preserve-3d"
         >
           {/* Mobile Logo */}
           <div className="flex justify-center mb-8 lg:hidden">
@@ -180,8 +182,8 @@ const LoginPage: React.FC = () => {
           </div>
 
           {/* Header */}
-          <div className="text-center lg:text-left mb-10">
-            <h2 className="text-3xl font-serif font-bold text-slate-900 mb-3 tracking-tight">
+          <div className="text-center lg:text-left mb-10" style={{ transform: "translateZ(20px)" }}>
+            <h2 className="text-3xl font-serif font-bold mb-3 tracking-tight animate-gradient-text">
               {isLogin ? 'Welcome Back' : 'Join Us'}
             </h2>
             <p className="text-slate-500 text-[15px]">
@@ -193,19 +195,19 @@ const LoginPage: React.FC = () => {
 
           {/* Role Switcher */}
           <div className="flex justify-center mb-6">
-            <div className="inline-flex bg-slate-100 p-1 rounded-xl">
+            <div className="inline-flex bg-stone-100/50 dark:bg-stone-800/50 backdrop-blur-md p-1.5 rounded-2xl shadow-inner border border-stone-200/50 dark:border-stone-700/50">
               <button
                 onClick={() => { setRole('hotel'); resetPhoneAuth(); }}
-                className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all ${
-                  role === 'hotel' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all ${
+                  role === 'hotel' ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-stone-100 shadow-md transform scale-105' : 'text-stone-500 hover:text-stone-700 dark:text-stone-400'
                 }`}
               >
                 🏨 Hotel / Partner
               </button>
               <button
                 onClick={() => { setRole('volunteer'); resetPhoneAuth(); }}
-                className={`px-5 py-2 text-sm font-semibold rounded-lg transition-all ${
-                  role === 'volunteer' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all ${
+                  role === 'volunteer' ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-stone-100 shadow-md transform scale-105' : 'text-stone-500 hover:text-stone-700 dark:text-stone-400'
                 }`}
               >
                 🤝 Volunteer
