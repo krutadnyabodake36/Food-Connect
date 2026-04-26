@@ -3,16 +3,22 @@ node_modules/
 .pnp
 .pnp.js
 
+# Python virtual environments
+.venv/
+.venv-1/
+venv/
+env/
+__pycache__/
+*.pyc
+
 # Build output
 dist/
 build/
 
 # Environment variables (NEVER commit these)
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
 
 # IDE
 .vscode/

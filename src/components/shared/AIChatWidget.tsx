@@ -105,7 +105,7 @@ const AIChatWidget: React.FC<AIChatWidgetProps> = ({ role }) => {
                   <Sparkles size={18} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm">FoodConnect AI</h3>
+                  <h3 className="font-bold text-sm animate-gradient-text">FoodConnect AI</h3>
                   <p className="text-xs text-forest-200">Powered by AI</p>
                 </div>
               </div>

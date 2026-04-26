@@ -1,19 +1,23 @@
-import React from 'react';
-import { BarChart3, Utensils, Clock, Leaf, Award, TrendingUp, ArrowRight, MapPin, Package, Truck } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { BarChart3, Utensils, Clock, Leaf, Award, TrendingUp, ArrowRight, MapPin, Package, Truck, Loader2 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
 import { motion } from 'framer-motion';
+import { apiRequest } from '../../lib/api';
+
+interface UserStats {
+  userId: string;
+  mealsRescued: number;
+  hoursVolunteered: number;
+  totalWeight: number;
+  completedPickups: number;
+  score: number;
+  rating: number;
+}
 
 const weeklyData = [
-  { day: 'Mon', meals: 12 }, { day: 'Tue', meals: 8 }, { day: 'Wed', meals: 15 },
-  { day: 'Thu', meals: 6 }, { day: 'Fri', meals: 20 }, { day: 'Sat', meals: 18 }, { day: 'Sun', meals: 10 },
-];
-
-const recentActivity = [
-  { id: '1', title: 'Picked up Veg Biryani', from: 'Green Leaf Bistro', time: '2h ago', plates: 8, icon: '🍛' },
-  { id: '2', title: 'Delivered Pastries', from: 'Café Delight', time: '5h ago', plates: 12, icon: '🥐' },
-  { id: '3', title: 'Rescued Dal & Bread', from: 'Spice Route Banquet', time: '1d ago', plates: 25, icon: '🍲' },
-  { id: '4', title: 'Collected Sandwiches', from: 'Urban Bites', time: '2d ago', plates: 6, icon: '🥪' },
+  { day: 'Mon', meals: 0 }, { day: 'Tue', meals: 0 }, { day: 'Wed', meals: 0 },
+  { day: 'Thu', meals: 0 }, { day: 'Fri', meals: 0 }, { day: 'Sat', meals: 0 }, { day: 'Sun', meals: 0 },
 ];
 
 const containerVariants = {
@@ -31,43 +35,85 @@ interface VolunteerDashboardProps {
   availableCount?: number;
 }
 
-const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ onGoToMap, availableCount = 4 }) => {
+const VolunteerDashboard: React.FC<VolunteerDashboardProps> = ({ onGoToMap, availableCount = 0 }) => {
   const { user } = useAuth();
+  const [stats, setStats] = useState<UserStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user?.id) return;
+      try {
+        const data = await apiRequest<UserStats>(`/users/${user.id}/stats`, { method: 'GET' });
+        setStats(data);
+      } catch (error) {
+        console.error('Failed to fetch user stats:', error);
+        setStats({
+          userId: user.id || '0',
+          mealsRescued: 0,
+          hoursVolunteered: 0,
+          totalWeight: 0,
+          completedPickups: 0,
+          score: 0,
+          rating: 4.9,
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, [user?.id]);
 
   const StatCard = ({ title, value, subtext, icon: Icon }: any) => (
     <motion.div 
       variants={itemVariants}
       whileHover={{ scale: 1.02, rotateX: 2, rotateY: -2 }}
       transition={{ type: "spring", stiffness: 400, damping: 17 }}
-      className="glass-panel p-6 rounded-2xl flex items-start justify-between transition-colors cursor-pointer preserve-3d group"
+      className="glass-panel p-6 rounded-2xl flex items-start justify-between transition-colors cursor-pointer preserve-3d group shadow-xl shadow-forest-900/5 hover:border-forest-500/30"
     >
       <div style={{ transform: "translateZ(20px)" }}>
-        <p className="text-stone-500 dark:text-stone-400 text-sm font-medium mb-1">{title}</p>
-        <h3 className="text-2xl font-bold text-forest-900 dark:text-forest-400">{value}</h3>
+        <p className="text-stone-500 dark:text-stone-400 text-sm font-medium mb-1 uppercase tracking-wider">{title}</p>
+        <h3 className="text-3xl font-black text-forest-900 dark:text-forest-400 tabular-nums">{value}</h3>
         {subtext && <p className="text-stone-400 dark:text-stone-500 text-xs mt-2 font-medium">{subtext}</p>}
       </div>
-      <div style={{ transform: "translateZ(30px)" }} className="p-2.5 bg-forest-50 dark:bg-forest-900/40 rounded-xl text-forest-600 dark:text-forest-400 group-hover:scale-110 transition-transform shadow-inner">
+      <div style={{ transform: "translateZ(30px)" }} className="p-3 bg-forest-50 dark:bg-forest-900/40 rounded-2xl text-forest-600 dark:text-forest-400 group-hover:scale-110 transition-transform shadow-inner border border-forest-100 dark:border-forest-800/10">
         <Icon size={24} />
       </div>
     </motion.div>
   );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8 min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="animate-spin text-forest-600 w-10 h-10" />
+          <p className="text-sm font-bold text-stone-400 animate-pulse">Loading your impact...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const recentActivity = stats?.completedPickups === 0 ? [] : [
+    { id: '1', title: 'Last Successful Rescue', from: 'Partner Hotel', time: 'Recently', plates: stats?.mealsRescued || 0, icon: '🍛' },
+  ];
 
   return (
     <motion.div 
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="p-4 lg:p-8 space-y-8 max-w-5xl mx-auto"
+      className="p-4 lg:p-8 space-y-8 max-w-5xl mx-auto animate-mesh-bg rounded-[2.5rem] my-4 shadow-2xl border border-white/20"
     >
       <motion.div variants={itemVariants}>
-        <h1 className="text-3xl font-bold tracking-tight animate-gradient-text">Good afternoon, {user?.name || 'Volunteer'}.</h1>
-        <p className="text-stone-500 dark:text-stone-400 mt-1">Here's your impact overview for today.</p>
+        <h1 className="text-3xl md:text-4xl font-black tracking-tight animate-gradient-text">Good afternoon, {user?.name || 'Volunteer'}.</h1>
+        <p className="text-stone-500 dark:text-stone-400 mt-1 font-medium">Verified impact data synced with FoodConnect Network.</p>
       </motion.div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Meals Rescued This Week" value="89" subtext="+12 from last week" icon={Utensils} />
-        <StatCard title="Hours Volunteered" value="24.5h" subtext="Avg 3.5h per day" icon={Clock} />
-        <StatCard title="Nearby Donations" value={`${availableCount} active`} subtext="Dadar, Mumbai area" icon={Package} />
+        <StatCard title="Meals Rescued" value={stats?.mealsRescued || 0} subtext={`Total contributions so far`} icon={Utensils} />
+        <StatCard title="Hours Logged" value={`${stats?.hoursVolunteered || 0}h`} subtext={`Avg. commitment level`} icon={Clock} />
+        <StatCard title="Network Activity" value={`${availableCount} Nearby`} subtext="Live donations available now" icon={Package} />
       </div>
 
       <motion.button 

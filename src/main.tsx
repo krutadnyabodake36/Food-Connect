@@ -6,6 +6,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { DonationProvider } from './contexts/DonationContext';
+import ToastViewport from './components/shared/ToastViewport';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -22,6 +23,7 @@ root.render(
           <AuthProvider>
             <DonationProvider>
               <App />
+              <ToastViewport />
             </DonationProvider>
           </AuthProvider>
         </SettingsProvider>

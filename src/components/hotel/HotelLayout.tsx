@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavItem } from '../../types';
 import { Logo } from '../shared/Logo';
+import SyncIndicator from '../shared/SyncIndicator';
 import { 
   LayoutDashboard, 
   PlusCircle, 
@@ -50,7 +51,7 @@ const HotelLayout: React.FC<HotelLayoutProps> = ({ children, activeTab, onNaviga
   );
 
   return (
-    <div className="min-h-screen h-screen bg-stone-50 dark:bg-stone-950 flex transition-colors duration-200 font-sans">
+    <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex transition-colors duration-200 font-sans">
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-stone-900/20 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
@@ -101,7 +102,7 @@ const HotelLayout: React.FC<HotelLayoutProps> = ({ children, activeTab, onNaviga
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden bg-stone-50 dark:bg-stone-950">
+      <main className="flex-1 h-screen overflow-y-auto bg-stone-50 dark:bg-stone-950">
         <header className="lg:hidden h-16 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 shadow-sm z-30 relative flex-shrink-0">
           <Logo size="sm" showText={true} />
           <div className="flex items-center gap-1">
@@ -111,8 +112,14 @@ const HotelLayout: React.FC<HotelLayoutProps> = ({ children, activeTab, onNaviga
             </button>
           </div>
         </header>
-        <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
-          <div className="max-w-5xl mx-auto w-full space-y-8">{children}</div>
+        <div className="p-4 lg:p-8 scroll-smooth">
+          <div className="max-w-5xl mx-auto w-full">
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-sm font-semibold text-stone-400 dark:text-stone-500 uppercase tracking-wider">Live Dashboard</h1>
+              <SyncIndicator />
+            </div>
+            <div className="space-y-8">{children}</div>
+          </div>
         </div>
       </main>
       <AIChatWidget role="hotel" />

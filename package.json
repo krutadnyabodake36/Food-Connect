@@ -5,13 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "api": "uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000",
     "build": "vite build",
     "lint": "tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/genai": "^1.35.0",
-    "@supabase/supabase-js": "^2.98.0",
     "clsx": "^2.1.1",
     "firebase": "^12.10.0",
     "framer-motion": "^12.31.0",
@@ -19,6 +19,7 @@
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-is": "^19.2.5",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.7.0",

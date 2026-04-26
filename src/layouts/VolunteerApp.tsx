@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map, LayoutDashboard, Heart, Settings as SettingsIcon, Filter, X, Leaf, Menu, LogOut, MapPin, Moon, Sun } from 'lucide-react';
 import VolunteerMap from '../components/volunteer/VolunteerMap';
@@ -7,14 +7,32 @@ import DonationSheet from '../components/volunteer/DonationSheet';
 import VolunteerDashboard from '../pages/volunteer/VolunteerDashboard';
 import Impact from '../pages/volunteer/Impact';
 import SettingsPage from '../pages/volunteer/Settings';
+import SyncIndicator from '../components/shared/SyncIndicator';
 import { VolunteerDonation } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useDonations, getHotelName, getHotelLocation } from '../contexts/DonationContext';
+import { useDonations } from '../contexts/DonationContext';
+import { getHotelName, getHotelLocation } from '../lib/hotelLocation';
 import NotificationBell from '../components/shared/NotificationBell';
 import AIChatWidget from '../components/shared/AIChatWidget';
 
 type View = 'map' | 'dashboard' | 'impact' | 'settings';
+
+const DEFAULT_VOLUNTEER_LOCATION = { lat: 19.0176, lng: 72.8562 };
+const NEARBY_RADIUS_KM = 50;
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+
+const getDistanceKm = (fromLat: number, fromLng: number, toLat: number, toLng: number) => {
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(toLat - fromLat);
+  const dLng = toRadians(toLng - fromLng);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2)
+    + Math.cos(toRadians(fromLat)) * Math.cos(toRadians(toLat)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+};
 
 const VolunteerApp: React.FC = () => {
   const [view, setView] = useState<View>('dashboard');
@@ -23,22 +41,45 @@ const VolunteerApp: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [routeInfo, setRouteInfo] = useState<RouteResult | null>(null);
+  const [volunteerLocation, setVolunteerLocation] = useState(DEFAULT_VOLUNTEER_LOCATION);
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { donations: allDonations, requestPickup } = useDonations();
 
   const filters = ['All', 'Veg', 'Non-Veg', 'Bakery', 'Bulk', 'Hot'];
 
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setVolunteerLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {
+        // Keep default location if permission is denied.
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 30000,
+      },
+    );
+  }, []);
+
   // Convert shared HotelDonation[] to VolunteerDonation[] for the map
   const availableDonations: VolunteerDonation[] = useMemo(() => {
-    return allDonations
+    const mapped = allDonations
       .filter(d => d.status === 'pending' || (d.status === 'assigned' && d.assignedVolunteer?.id === user?.id))
       .map(d => {
         const loc = getHotelLocation(d.hotelId);
+        const distanceKm = getDistanceKm(volunteerLocation.lat, volunteerLocation.lng, loc.lat, loc.lng);
         return {
           id: d.id,
           hotelName: getHotelName(d),
-          distance: (Math.random() * 3 + 0.5).toFixed(1) + ' km', // Simulated
+          distance: `${distanceKm.toFixed(1)} km`,
           foodItem: d.title,
           quantity: Math.max(1, Math.round(d.weight * 2)), // approx plates
           expiryTime: d.pickupWindow,
@@ -51,9 +92,15 @@ const VolunteerApp: React.FC = () => {
           status: d.status as any,
           hasActiveRequest: !!d.activeRequest,
           pickupCode: d.pickupCode,
+          _distanceKm: distanceKm,
         };
-      });
-  }, [allDonations, user?.id]);
+      })
+      .sort((a: any, b: any) => a._distanceKm - b._distanceKm);
+
+    const nearby = mapped.filter((item: any) => item._distanceKm <= NEARBY_RADIUS_KM);
+    const realistic = nearby.length > 0 ? nearby : mapped.slice(0, 12);
+    return realistic.map(({ _distanceKm, ...rest }: any) => rest as VolunteerDonation);
+  }, [allDonations, user?.id, volunteerLocation.lat, volunteerLocation.lng]);
 
   const filteredDonations = useMemo(() => {
     if (!activeFilter || activeFilter === 'All') return availableDonations;
@@ -118,13 +165,13 @@ const VolunteerApp: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen h-screen bg-stone-50 dark:bg-stone-950 flex font-sans transition-colors duration-200">
+    <div className="min-h-screen bg-stone-50 dark:bg-stone-950 flex font-sans transition-colors duration-200">
       {isMobileMenuOpen && (
         <div className="fixed inset-0 bg-stone-900/20 backdrop-blur-sm z-40 lg:hidden" onClick={() => setIsMobileMenuOpen(false)} />
       )}
 
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-72 glass-sidebar lg:my-4 lg:ml-4 lg:rounded-3xl transform transition-transform duration-300 ease-in-out shadow-xl lg:shadow-2xl flex-shrink-0
+        fixed lg:static inset-y-0 left-0 z-50 w-72 glass-sidebar lg:my-4 lg:ml-4 lg:rounded-3xl transform transition-transform duration-300 ease-in-out shadow-xl lg:shadow-2xl shrink-0
         ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="h-full flex flex-col">
@@ -134,7 +181,7 @@ const VolunteerApp: React.FC = () => {
                 <Leaf size={20} />
               </div>
               <div>
-                <span className="text-xl font-serif font-bold text-forest-900 dark:text-forest-300 tracking-wide">FoodConnect</span>
+                <span className="text-xl font-serif font-bold tracking-wide animate-gradient-text">FoodConnect</span>
                 <p className="text-[10px] font-semibold text-stone-400 uppercase tracking-widest -mt-0.5">Volunteer</p>
               </div>
             </div>
@@ -192,11 +239,11 @@ const VolunteerApp: React.FC = () => {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-h-0 overflow-hidden bg-stone-50 dark:bg-stone-950">
-        <header className="lg:hidden h-16 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 shadow-sm z-30 relative flex-shrink-0">
+      <main className="flex-1 h-screen overflow-y-auto bg-stone-50 dark:bg-stone-950">
+        <header className="lg:hidden h-16 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between px-4 shadow-sm z-30 relative shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 bg-forest-700 rounded-xl flex items-center justify-center text-white"><Leaf size={15} /></div>
-            <span className="text-lg font-serif font-bold text-forest-900 dark:text-forest-300">FoodConnect</span>
+            <span className="text-lg font-serif font-bold animate-gradient-text">FoodConnect</span>
           </div>
           <div className="flex items-center gap-1">
             <NotificationBell />
@@ -206,10 +253,10 @@ const VolunteerApp: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-hidden relative">
+        <div className="relative min-h-[calc(100vh-4rem)] lg:min-h-screen">
           <AnimatePresence mode="wait">
             {view === 'map' && (
-              <motion.div key="map" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0">
+              <motion.div key="map" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} transition={{ duration: 0.3, ease: 'easeInOut' }} className="absolute inset-0">
                 <div className="absolute inset-0 z-0">
                   <VolunteerMap donations={filteredDonations} selectedId={selectedId} onSelectMarker={handleSelectMarker} isNavigating={isNavigating} onRouteUpdate={setRouteInfo} />
                 </div>
@@ -218,6 +265,7 @@ const VolunteerApp: React.FC = () => {
                     <div className="w-2 h-2 rounded-full bg-forest-500 ring-4 ring-forest-500/20" />
                     <span className="text-xs font-semibold text-stone-700">Dadar, Mumbai</span>
                   </div>
+                  <SyncIndicator />
                   <div className="flex-1" />
                   <button onClick={() => setShowFilters(!showFilters)} className={`p-3 rounded-xl shadow-lg border transition-all backdrop-blur-xl ${showFilters ? 'bg-forest-700 text-white border-forest-700' : 'bg-white/90 text-stone-600 border-stone-200/60'}`}>
                     {showFilters ? <X size={18} /> : <Filter size={18} />}
@@ -247,17 +295,17 @@ const VolunteerApp: React.FC = () => {
               </motion.div>
             )}
             {view === 'dashboard' && (
-              <motion.div key="dashboard" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="absolute inset-0 overflow-y-auto scroll-smooth">
+              <motion.div key="dashboard" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="absolute inset-0 overflow-y-auto scroll-smooth">
                 <VolunteerDashboard onGoToMap={() => handleNavigate('map')} availableCount={availableDonations.length} />
               </motion.div>
             )}
             {view === 'impact' && (
-              <motion.div key="impact" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="absolute inset-0 overflow-y-auto scroll-smooth">
+              <motion.div key="impact" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="absolute inset-0 overflow-y-auto scroll-smooth">
                 <Impact />
               </motion.div>
             )}
             {view === 'settings' && (
-              <motion.div key="settings" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="absolute inset-0 overflow-y-auto scroll-smooth">
+              <motion.div key="settings" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} transition={{ duration: 0.3, ease: 'easeOut' }} className="absolute inset-0 overflow-y-auto scroll-smooth">
                 <SettingsPage />
               </motion.div>
             )}

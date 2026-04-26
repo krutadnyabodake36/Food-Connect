@@ -1,0 +1,96 @@
+FoodConnect - Detailed Database Management System (DBMS) Overview
+
+1. Architectural Core
+The database is built on PostgreSQL, utilizing a strict Relational Database Management System (RDBMS) architecture. It deeply enforces Data Integrity through strict foreign key constraints, check constraints, unique constraints, and cascade delete rules. The system uses Supabase as the BaaS layer, which provides real-time capabilities and Row Level Security (RLS).
+
+2. Database Connection and Configuration
+- Primary Connection: Supabase client for real-time operations
+- Secondary Connection: Direct psycopg2 for complex backend operations
+- Environment Variables: DATABASE_URL for connection string
+- Connection Pooling: Handled by Supabase and psycopg2 connection management
+
+3. Entity-Relationship Schema Breakdown
+
+a) Users Table (`users`)
+- Acts as the central identity registry using a polymorphic relationship model via standard inheritance logic mapping.
+- Attributes: user_id (PK, BIGSERIAL), password (VARCHAR(255)), email (UNIQUE), phone (UNIQUE), role (ENUM/CHECK: 'hotel', 'volunteer', 'admin').
+- Strategy: By isolating authentication details and roles into a master table, it ensures that a user can be cross-referenced regardless of their functional role.
+- Indexes: idx_users_role for fast role-based queries
+
+b) Hotel Table (`hotel`)
+- Represents a 1:1 relationship with the `users` table via `user_id`.
+- Attributes: h_id (PK, BIGSERIAL), user_id (FK, UNIQUE), h_name, address (TEXT), fssai (UNIQUE).
+- Strict referential integrity: If a user is deleted, their hotel record is CASCADE deleted.
+- Business Logic: FSSAI number ensures regulatory compliance for food handling
+
+c) Volunteer Table (`volunteer`)
+- Represents a 1:1 relationship with the `users` table.
+- Attributes: vol_id (PK, BIGSERIAL), user_id (FK, UNIQUE), vol_name, vehicle_type, score (INTEGER, DEFAULT 0, CHECK >= 0).
+- Implements a CHECK constraint to ensure `score >= 0`, maintaining gamification integrity.
+- Indexes: idx_volunteer_user_id for fast lookups
+
+d) Donations Table (`donations`)
+- Represents a 1:N relationship from the Hotel table (One hotel posts many donations).
+- Attributes: d_id (PK, BIGSERIAL), h_id (FK), total_wt (NUMERIC(10,2), CHECK > 0), exp_time (TIMESTAMP), created_at (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP).
+- Maintains strict time tracking for expiration.
+- Indexes: idx_donations_h_id, idx_donations_exp_time for performance
+
+e) Donation Tags (`donation_tags`)
+- Normalizes multi-valued attributes for a single donation (e.g., a donation with 'rice', 'biryani', 'noodles').
+- Attributes: tag_id (PK, BIGSERIAL), d_id (FK), tag (VARCHAR(20), CHECK IN allowed values).
+- Constraint: UNIQUE(d_id, tag) prevents duplicate tags on a single donation.
+- Indexes: idx_donation_tags_tag for filtering by food type
+
+f) Claims Record Table (`claims_record`)
+- Acts as the Association Entity mapping the N:M relationship between Volunteers and Donations. (A volunteer can claim multiple donations; a donation can be part of the records).
+- Attributes: c_id (PK, BIGSERIAL), d_id (FK), vol_id (FK), status (CHECK: 'pending', 'accepted', 'delivered'), c_wt (NUMERIC(10,2), CHECK > 0), timestamp (TIMESTAMP, DEFAULT CURRENT_TIMESTAMP).
+- Critical for tracking the donation lifecycle
+- Indexes: idx_claims_d_id, idx_claims_vol_id, idx_claims_status
+
+g) Verification Table (`verification`)
+- Represents a 1:1 mapping with `claims_record` ensuring cryptographic/hash-based security for handoffs.
+- Attributes: ve_id (PK, BIGSERIAL), c_id (FK, UNIQUE), exp_time (TIMESTAMP), pickup_hash (VARCHAR(128)), delivery_hash (VARCHAR(128)), verified_at (TIMESTAMP).
+- Security: Stores OTP hashes for secure verification
+
+4. Database Operations and Queries
+- CRUD Operations: Standard INSERT, UPDATE, SELECT, DELETE with proper error handling
+- Complex Queries: JOINs for user profiles, aggregations for reports
+- Real-time Subscriptions: Supabase channels for live updates
+- Transaction Management: ACID compliance for multi-table operations
+
+5. Indexing & Optimization
+Specific indexes are created for performance tuning during high-concurrency geographical querying:
+- Role checks: `CREATE INDEX idx_users_role ON users(role)`
+- Fast lookup for maps/donations: `idx_donations_h_id`, `idx_donations_exp_time`
+- Dashboard load optimization: `idx_claims_d_id`, `idx_claims_vol_id`, `idx_claims_status`
+- Tag filtering: `idx_donation_tags_tag`
+- Verification lookups: `idx_verification_exp_time`
+
+6. Concurrency & Integrity Features
+- ACID Compliance: Native to PostgreSQL, ensuring transactions (like accepting a food claim) are completely atomic. No partial claims are recorded if a system failure occurs.
+- Database Triggers/Constraints: Avoids negative weights, enforces valid tags, and mandates explicit statuses through complex `CHECK` conditions rather than relying purely on frontend validation.
+- Cascade Deletes: Maintains referential integrity when users or donations are removed
+- Unique Constraints: Prevents duplicate emails, phones, FSSAI numbers
+
+7. Data Security and Privacy
+- Row Level Security (RLS): Implemented via Supabase policies
+- Data Encryption: Passwords hashed with PBKDF2
+- Audit Trails: All changes tracked via timestamps
+- GDPR Compliance: User data protection measures
+
+8. Backup and Recovery
+- Automatic Backups: Handled by Supabase infrastructure
+- Point-in-time Recovery: Available for data restoration
+- Schema Migrations: Version-controlled SQL scripts
+
+9. Performance Monitoring
+- Query Performance: EXPLAIN ANALYZE for optimization
+- Connection Pooling: Efficient resource usage
+- Real-time Metrics: Supabase dashboard monitoring
+
+10. Database-Driven Business Logic
+- User Authentication: Role-based access control via database queries
+- Donation Lifecycle: Status transitions managed through database constraints
+- Real-time Updates: WebSocket subscriptions for instant UI synchronization
+- Reporting: Complex aggregations for impact metrics and analytics
+- Gamification: Score calculations and leaderboard queries

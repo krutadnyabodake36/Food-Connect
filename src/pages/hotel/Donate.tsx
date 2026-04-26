@@ -1,9 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, Loader2, Sparkles, Wand2, ArrowRight, CheckCircle, Minus, Plus, Clock, AlertTriangle } from 'lucide-react';
+import { Upload, X, Loader2, Sparkles, ArrowRight, CheckCircle, Minus, Plus, Clock, AlertTriangle } from 'lucide-react';
 import { analyzeFoodPhoto } from '../../lib/openrouter';
 import { HotelDonation } from '../../types';
 
-const AVAILABLE_TAGS = ['Rice', 'Curry', 'Bread', 'Dessert', 'Veg', 'Non-Veg', 'Dairy', 'Fruit'];
+const AVAILABLE_TAGS = ['biryani', 'rice', 'noodles'];
+const UNIT_OPTIONS = [
+  { value: 'kg', label: 'Kilograms' },
+  { value: 'plates', label: 'Plates' },
+  { value: 'pieces', label: 'Pieces' },
+  { value: 'servings', label: 'Servings' },
+] as const;
 
 interface DonateProps {
     onSave: (donation: Partial<HotelDonation>) => void;
@@ -14,8 +20,6 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(initialData?.imageUrl || null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editPrompt, setEditPrompt] = useState("");
   const [isSuccess, setIsSuccess] = useState(false);
   
   const [startT, endT] = initialData?.pickupWindow ? initialData.pickupWindow.split(' - ') : ['16:00', '18:00'];
@@ -23,40 +27,63 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
   const [title, setTitle] = useState(initialData?.title || '');
   const [selectedTags, setSelectedTags] = useState<string[]>(initialData?.tags || []);
   const [quantity, setQuantity] = useState<number>(initialData?.weight || 5);
+  const [quantityUnit, setQuantityUnit] = useState<HotelDonation['quantityUnit']>(initialData?.quantityUnit || 'kg');
   const [startTime, setStartTime] = useState(startT);
   const [endTime, setEndTime] = useState(endT);
   const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
+  const [foodPreparedDate, setFoodPreparedDate] = useState<string>(initialData?.prepTime ? initialData.prepTime.split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [description, setDescription] = useState(initialData?.description || '');
+  const [isVeg, setIsVeg] = useState<boolean>(initialData?.isVeg ?? true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selectedFile = e.target.files[0];
+      
+      // Validate image file
+      if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(selectedFile.type)) {
+        alert('Please upload a valid image file (JPEG, PNG, WebP, or GIF)');
+        return;
+      }
+      
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        alert('Image file must be smaller than 5MB');
+        return;
+      }
+      
       setFile(selectedFile);
       const url = URL.createObjectURL(selectedFile);
       setPreviewUrl(url);
       
+      // NEW: Clear old title and tags to avoid data mixup between different image uploads
+      setTitle('');
+      setSelectedTags([]);
+      
       setIsAnalyzing(true);
       try {
         const result = await analyzeFoodPhoto(selectedFile);
-        setTitle(result.title);
-        const newTags = new Set([...selectedTags, ...result.tags.filter((t: string) => AVAILABLE_TAGS.includes(t))]);
-        setSelectedTags(Array.from(newTags));
-        if (result.weightEstimate) setQuantity(Math.round(result.weightEstimate));
-      } catch (err) { console.error("Analysis failed", err); }
+        if (result && result.title) {
+          setTitle(result.title);
+          // NEW: Use ONLY the analysis results, don't merge with old tags
+          const analysisTagsFiltered = result.tags
+            .map((t: string) => String(t || '').toLowerCase())
+            .filter((t: string) => AVAILABLE_TAGS.includes(t));
+          setSelectedTags(analysisTagsFiltered);
+          if (result.weightEstimate) setQuantity(Math.round(result.weightEstimate));
+          setQuantityUnit('kg');
+        } else {
+          // NEW: If analysis succeeds but returns empty results, alert user
+          alert('Image analysis completed but returned no results. Please fill in details manually.');
+        }
+      } catch (err) { 
+        console.error("Analysis failed", err);
+        // Validation passed but analysis failed - image is still valid, just notify user
+        alert('Image uploaded but AI analysis was not available. You can still use this image. Please fill in details manually.');
+      }
       finally { setIsAnalyzing(false); }
     }
   };
-
-  const handleEditImage = async () => {
-    if (!file || !editPrompt) return;
-    setIsEditing(true);
-    try {
-        // Image editing not available via OpenRouter — placeholder
-        alert('AI image editing is not available in this version.');
-    } catch (e) { console.error("Edit failed", e); }
-    finally { setIsEditing(false); setEditPrompt(''); }
-  }
 
   const toggleTag = (tag: string) => {
     if (selectedTags.includes(tag)) setSelectedTags(selectedTags.filter(t => t !== tag));
@@ -81,7 +108,33 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newDonation: Partial<HotelDonation> = { title, weight: quantity, tags: selectedTags, pickupWindow: `${startTime} - ${endTime}`, imageUrl: previewUrl || undefined, isUrgent };
+
+    const now = new Date();
+    const [startHour, startMinute] = startTime.split(':').map(Number);
+    const [endHour, endMinute] = endTime.split(':').map(Number);
+
+    const prepDateTime = new Date(foodPreparedDate);
+    prepDateTime.setHours(Number.isFinite(startHour) ? startHour : 0, Number.isFinite(startMinute) ? startMinute : 0, 0, 0);
+
+    const expiryDateTime = new Date();
+    expiryDateTime.setHours(Number.isFinite(endHour) ? endHour : now.getHours() + 2, Number.isFinite(endMinute) ? endMinute : now.getMinutes(), 0, 0);
+    if (expiryDateTime <= now) {
+      expiryDateTime.setDate(expiryDateTime.getDate() + 1);
+    }
+
+    const newDonation: Partial<HotelDonation> = { 
+      title, 
+      description,
+      isVeg,
+      prepTime: prepDateTime.toISOString(),
+      weight: quantity, 
+      quantityUnit, 
+      tags: selectedTags.map((tag) => tag.toLowerCase()), 
+      pickupWindow: `${startTime} - ${endTime}`, 
+      imageUrl: previewUrl || undefined, 
+      isUrgent,
+      expiryDate: expiryDateTime.toISOString(),
+    };
     onSave(newDonation);
     setIsSuccess(true);
   };
@@ -129,11 +182,6 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
                     <Loader2 size={32} className="animate-spin" /><span className="text-sm font-medium">Analyzing food with AI...</span>
                  </div>
                )}
-               <div className="absolute bottom-0 inset-x-0 bg-white/95 dark:bg-stone-900/95 border-t border-stone-200 dark:border-stone-800 p-3 flex gap-2 items-center">
-                  <Wand2 size={16} className="text-forest-600 dark:text-forest-400" />
-                  <input type="text" value={editPrompt} onChange={(e) => setEditPrompt(e.target.value)} placeholder="Ask AI to enhance image..." className="flex-1 bg-transparent text-sm focus:outline-none placeholder:text-stone-400 text-stone-900 dark:text-stone-100" />
-                  <button type="button" onClick={handleEditImage} disabled={!editPrompt || isEditing} className="text-xs bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 px-3 py-1.5 rounded-md hover:bg-stone-800 dark:hover:bg-stone-200 disabled:opacity-50 transition-colors">{isEditing ? 'Editing...' : 'Apply'}</button>
-               </div>
             </div>
           )}
         </div>
@@ -145,6 +193,27 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Lunch Buffet Leftovers" className="w-full px-4 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all placeholder:text-stone-400" required />
             {isAnalyzing && <Sparkles size={16} className="absolute right-3 top-3 text-forest-500 animate-pulse" />}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1.5">Food Description</label>
+          <textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Paneer biryani, dal tadka and 30 rotis"
+            className="w-full px-4 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all placeholder:text-stone-400 min-h-24"
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-3 rounded-lg border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800/70">
+          <div>
+            <p className="text-sm font-medium text-stone-900 dark:text-stone-100">Food Type</p>
+            <p className="text-xs text-stone-500 dark:text-stone-400">Mark whether this donation is vegetarian.</p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-stone-700 dark:text-stone-200">
+            <input type="checkbox" checked={isVeg} onChange={(e) => setIsVeg(e.target.checked)} />
+            {isVeg ? 'Veg' : 'Non-Veg'}
+          </label>
         </div>
 
         {/* Tags */}
@@ -159,18 +228,30 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
 
         {/* Quantity */}
         <div>
-            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-3">Estimated Quantity (kg)</label>
+            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-3">Estimated Quantity</label>
             <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 border border-stone-200 dark:border-stone-700">
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {UNIT_OPTIONS.map((unit) => (
+                    <button
+                      key={unit.value}
+                      type="button"
+                      onClick={() => setQuantityUnit(unit.value)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${quantityUnit === unit.value ? 'bg-forest-600 text-white border-forest-600 shadow-sm' : 'bg-white dark:bg-stone-700 text-stone-600 dark:text-stone-300 border-stone-200 dark:border-stone-600 hover:border-forest-300'}`}
+                    >
+                      {unit.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="flex items-center justify-between mb-4">
                     <button type="button" onClick={() => adjustQuantity(-1)} className="w-10 h-10 rounded-lg bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 flex items-center justify-center text-stone-600 dark:text-stone-300 hover:bg-stone-100 shadow-sm"><Minus size={20} /></button>
                     <div className="flex flex-col items-center">
                         <input type="number" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value) || 0)} className="text-3xl font-bold text-stone-900 dark:text-stone-100 bg-transparent text-center w-24 focus:outline-none p-0" />
-                        <span className="text-xs text-stone-500 dark:text-stone-400 font-medium uppercase tracking-wide">Kilograms</span>
+                        <span className="text-xs text-stone-500 dark:text-stone-400 font-medium uppercase tracking-wide">{UNIT_OPTIONS.find((u) => u.value === quantityUnit)?.label || 'Units'}</span>
                     </div>
                     <button type="button" onClick={() => adjustQuantity(1)} className="w-10 h-10 rounded-lg bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 flex items-center justify-center text-stone-600 dark:text-stone-300 hover:bg-stone-100 shadow-sm"><Plus size={20} /></button>
                 </div>
                 <input type="range" min="1" max="50" value={quantity} onChange={(e) => setQuantity(parseInt(e.target.value))} className="w-full accent-forest-600 h-2 bg-stone-200 dark:bg-stone-600 rounded-lg appearance-none cursor-pointer" />
-                <div className="flex justify-between text-xs text-stone-400 dark:text-stone-500 mt-2 font-medium"><span>1 kg</span><span>25 kg</span><span>50+ kg</span></div>
+                <div className="flex justify-between text-xs text-stone-400 dark:text-stone-500 mt-2 font-medium"><span>1</span><span>25</span><span>50+</span></div>
             </div>
         </div>
 
@@ -190,16 +271,28 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
                 </div>
                 <div className="flex items-center gap-3">
                      <div className="flex-1">
-                        <label className="text-xs text-stone-500 dark:text-stone-400 font-semibold mb-1 block flex items-center gap-1"><Clock size={12}/> Start Time</label>
+                        <label className="text-xs text-stone-500 dark:text-stone-400 font-semibold mb-1 flex items-center gap-1"><Clock size={12}/> Start Time</label>
                         <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-600 focus:outline-none focus:border-forest-500 text-sm font-medium text-stone-800 dark:text-stone-200" />
                     </div>
                     <div className="pt-5 text-stone-400"><ArrowRight size={16} /></div>
                      <div className="flex-1">
-                        <label className="text-xs text-stone-500 dark:text-stone-400 font-semibold mb-1 block flex items-center gap-1"><Clock size={12}/> End Time</label>
+                        <label className="text-xs text-stone-500 dark:text-stone-400 font-semibold mb-1 flex items-center gap-1"><Clock size={12}/> End Time</label>
                         <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full px-3 py-2 bg-white dark:bg-stone-700 rounded-lg border border-stone-200 dark:border-stone-600 focus:outline-none focus:border-forest-500 text-sm font-medium text-stone-800 dark:text-stone-200" />
                     </div>
                 </div>
             </div>
+        </div>
+
+        {/* NEW: Expiry Date / Food Preparation Time */}
+        <div>
+            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-2">Food Prepared On</label>
+            <input 
+                type="date" 
+            value={foodPreparedDate} 
+            onChange={(e) => setFoodPreparedDate(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all"
+            />
+          <p className="text-xs text-stone-400 mt-1">Expiry is automatically derived from your pickup end-time so backend validation passes.</p>
         </div>
 
         {/* Urgent Flag */}
@@ -211,7 +304,7 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
                 <input type="checkbox" id="urgent-toggle" className="sr-only peer" checked={isUrgent} onChange={(e) => setIsUrgent(e.target.checked)} />
-                <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer dark:bg-stone-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                <div className="w-11 h-6 bg-stone-200 peer-focus:outline-none rounded-full peer dark:bg-stone-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
             </label>
         </div>
 

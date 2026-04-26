@@ -1,0 +1,167 @@
+# FoodConnect System Architecture
+
+## Overview
+FoodConnect is a modern web application built with a microservices-inspired architecture, leveraging cloud-native technologies for real-time food donation coordination between hotels and volunteers.
+
+## Architecture Components
+
+### 1. Frontend Layer
+- **Technology**: React 18 + TypeScript + Vite
+- **Architecture**: Single Page Application (SPA) with role-based routing
+- **State Management**: React Context API for global state
+- **Styling**: Tailwind CSS with custom design system
+- **Responsiveness**: Mobile-first Progressive Web App (PWA)
+
+### 2. Backend Layer
+- **Primary API**: Supabase (PostgreSQL + Real-time)
+- **Secondary API**: FastAPI (Python) for complex operations
+- **Authentication**: Firebase Auth with phone OTP
+- **Real-time**: WebSocket subscriptions via Supabase
+
+### 3. Database Layer
+- **Primary Database**: PostgreSQL via Supabase
+- **Schema**: Normalized relational design
+- **Real-time**: Supabase Realtime for instant synchronization
+- **Backup**: Automated cloud backups
+
+### 4. External Services
+- **Maps**: Leaflet + OpenStreetMap + OpenRouteService
+- **Notifications**: Firebase Cloud Messaging (FCM)
+- **AI**: Google Gemini API
+- **Export**: Google Sheets API + CSV generation
+
+## Data Flow Architecture
+
+### User Authentication Flow
+1. User enters phone number
+2. Firebase sends SMS OTP
+3. OTP verification creates JWT
+4. Backend validates against PostgreSQL users table
+5. Role-based routing to appropriate portal
+
+### Donation Creation Flow
+1. Hotel inputs donation details
+2. Frontend validates data
+3. Inserts into `donations` and `donation_tags` tables
+4. Supabase Realtime broadcasts to all connected clients
+5. Volunteer maps update instantly
+
+### Claim and Delivery Flow
+1. Volunteer requests pickup
+2. Insert into `claims_record` with 'pending' status
+3. Hotel receives notification via real-time subscription
+4. Hotel accepts, status changes to 'accepted'
+5. OTP generated and stored in `verification` table
+6. Volunteer navigates to hotel
+7. OTP verification completes transaction
+8. Status updates to 'delivered', score increments
+
+## Database Architecture Details
+
+### Core Tables Relationship
+```
+users (1:1) --> hotel
+users (1:1) --> volunteer
+hotel (1:N) --> donations
+donations (1:N) --> donation_tags
+donations (1:N) --> claims_record
+volunteer (1:N) --> claims_record
+claims_record (1:1) --> verification
+```
+
+### Indexing Strategy
+- Primary Keys: BIGSERIAL for auto-increment
+- Foreign Keys: Indexed for JOIN performance
+- Composite Indexes: UNIQUE constraints on multi-column keys
+- Performance Indexes: Role, timestamps, geospatial data
+
+### Security Architecture
+- **Data Layer**: Row Level Security (RLS) policies
+- **Application Layer**: JWT token validation
+- **Transport Layer**: HTTPS encryption
+- **Authentication**: Phone OTP with Firebase
+- **Authorization**: Role-based access control
+
+## Real-time Architecture
+
+### Supabase Realtime
+- WebSocket connections for instant updates
+- Channel subscriptions for specific data changes
+- Automatic reconnection handling
+- Fallback to polling when WebSocket unavailable
+
+### Push Notifications
+- Firebase Cloud Messaging for cross-platform delivery
+- Background notification handling
+- Custom notification payloads
+- User preference management
+
+## Scalability Considerations
+
+### Database Scalability
+- Connection pooling via Supabase
+- Read replicas for analytics queries
+- Horizontal scaling through PostgreSQL clustering
+- Query optimization with proper indexing
+
+### Application Scalability
+- Stateless frontend architecture
+- CDN delivery for static assets
+- API rate limiting and caching
+- Horizontal pod scaling for backend services
+
+### Real-time Scalability
+- WebSocket connection limits
+- Message queuing for high-volume updates
+- Database connection optimization
+- Load balancing for real-time services
+
+## Deployment Architecture
+
+### Development Environment
+- Local development with Vite dev server
+- FastAPI backend with uvicorn
+- PostgreSQL via Docker or local installation
+- Firebase emulator for testing
+
+### Production Environment
+- Vercel/Netlify for frontend hosting
+- Railway/Render for backend API
+- Supabase for database and real-time
+- Firebase for auth and notifications
+
+### CI/CD Pipeline
+- GitHub Actions for automated testing
+- TypeScript compilation checks
+- Database migration scripts
+- Automated deployment to staging/production
+
+## Monitoring and Observability
+
+### Application Monitoring
+- Error tracking with Sentry
+- Performance monitoring with Vercel Analytics
+- Database query performance monitoring
+- Real-time connection health checks
+
+### Business Metrics
+- Donation volume tracking
+- User engagement analytics
+- Impact measurement dashboards
+- Conversion funnel analysis
+
+## Security Architecture
+
+### Data Protection
+- End-to-end encryption for sensitive data
+- GDPR compliance for user data
+- Regular security audits
+- Secure API key management
+
+### Access Control
+- Multi-factor authentication
+- Role-based permissions
+- API rate limiting
+- Input validation and sanitization
+
+This architecture ensures FoodConnect can handle real-time coordination between multiple hotels and volunteers while maintaining data integrity, security, and scalability.

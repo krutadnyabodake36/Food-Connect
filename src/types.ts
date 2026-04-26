@@ -70,11 +70,20 @@ export interface TrackingInfo {
 export interface HotelDonation {
   id: string;
   hotelId: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  hotelType?: string;
+  contactName?: string;
   title: string;
+  description?: string;
+  isVeg?: boolean;
+  prepTime?: string;
   weight: number;
+  quantityUnit?: 'kg' | 'plates' | 'pieces' | 'servings';
   tags: string[];
   status: 'pending' | 'assigned' | 'completed';
   timestamp: string;
+  createdAt?: string;
   imageUrl?: string;
   pickupWindow: string;
   activeRequest?: Volunteer;
@@ -84,6 +93,8 @@ export interface HotelDonation {
   rating?: number;
   review?: string;
   isUrgent?: boolean;
+  claimedQuantity?: number;  // NEW: What volunteer claims to pick (partial pickup)
+  expiryDate?: string;  // NEW: ISO datetime when food was prepared / when it expires
 }
 
 export interface Stats {

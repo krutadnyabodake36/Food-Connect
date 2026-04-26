@@ -17,6 +17,9 @@
 
 </div>
 
+> [!IMPORTANT]
+> This is a **PRIVATE** repository. Ensure that sensitive information (API keys, secrets) is never committed. Use the provided `.env.example` as a template for your local environment.
+
 ## ✨ Features
 
 ### 🏨 Hotel / Restaurant Portal
@@ -49,178 +52,98 @@
 | Layer | Technology |
 |---|---|
 | **Frontend** | React 18, TypeScript, Vite |
-| **Styling** | Tailwind CSS, Framer Motion |
+| **Styling** | Vanilla CSS (Modern), Tailwind CSS, Framer Motion |
+| **Backend** | Python (FastAPI/Flask), Node.js |
 | **Database** | Supabase (PostgreSQL + Real-time) |
 | **Authentication** | Firebase Auth (Phone OTP) |
-| **Maps** | Leaflet + OpenStreetMap + OpenRouteService |
-| **Notifications** | Firebase Cloud Messaging (FCM) |
-| **Export** | CSV / Google Sheets API |
-| **AI** | Google Gemini API (impact videos) |
+| **Maps** | Leaflet + OpenRouteService |
+| **AI** | Google Gemini API (Impact analysis & insights) |
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### 1. Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Python](https://www.python.org/) (v3.10+) for backend services
+- [PostgreSQL](https://www.postgresql.org/) (if running locally)
 
-- [Node.js](https://nodejs.org/) v18 or higher
-- [npm](https://www.npmjs.com/) v9 or higher
-- A [Supabase](https://supabase.com) account (free tier works)
-- A [Firebase](https://firebase.google.com) project
-- An [OpenRouteService](https://openrouteservice.org) API key (free)
-
-### 1. Clone the repo
-
+### 2. Clone and Install
 ```bash
-git clone https://github.com/krutadnyabodake36/Food-Connect.git
+git clone https://github.com/Dipankar2105/Food-Connect.git
 cd Food-Connect
-```
-
-### 2. Install dependencies
-
-```bash
 npm install
 ```
 
-### 3. Set up environment variables
-
-Create a `.env.local` file in the project root:
-
-```env
-# Supabase
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Firebase
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_firebase_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-VITE_FIREBASE_APP_ID=your_app_id
-VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
-
-# OpenRouteService
-VITE_ORS_API_KEY=your_ors_api_key
-```
-
-### 4. Set up Supabase database
-
-1. Go to your Supabase dashboard → **SQL Editor**
-2. Copy the contents of `supabase/schema.sql`
-3. Paste and run it in the SQL Editor
-
-This creates the required tables (`profiles`, `donations`, `pickup_requests`), enables RLS, real-time subscriptions, and seeds demo data.
-
-### 5. Enable Firebase Phone Auth
-
-1. Go to Firebase Console → **Authentication** → **Sign-in method**
-2. Enable **Phone** provider
-3. Add `localhost` to authorized domains (for development)
-
-### 6. Start the development server
-
+### 3. Backend Setup
 ```bash
-npm run dev
+cd backend
+pip install -r requirements.txt
+# Set up your .env file inside backend/ as well
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+### 4. Environment Variables
+Create a `.env` file in the root directory. **Note: This file is ignored by Git for security.**
+Refer to `.env.example` for all required keys.
 
-### 7. Demo Login
-
-| Role | Credentials |
+| Variable | Description |
 |---|---|
-| **Hotel** | Name: `Demo Hotel` / Password: `password` |
-| **Volunteer** | Phone: `+91 9876543210` / Password: `password` |
+| `DATABASE_URL` | Connection string for your PostgreSQL database |
+| `VITE_FIREBASE_*` | Firebase configuration for Authentication and FCM |
+| `VITE_GEMINI_API_KEY` | API key for Google Gemini AI features |
+| `VITE_ORS_API_KEY` | API key for OpenRouteService (Maps) |
 
 ---
 
-## 📁 Project Structure
+## 📁 Repository Structure & File Details
 
-```
-food-connect/
-├── public/
-│   └── firebase-messaging-sw.js    # FCM service worker
-├── supabase/
-│   └── schema.sql                  # Database schema + seed data
-├── src/
-│   ├── components/
-│   │   ├── hotel/                  # Hotel UI components
-│   │   ├── volunteer/              # Volunteer UI (Map, DonationSheet)
-│   │   └── shared/                 # NotificationBell, Logo
-│   ├── contexts/
-│   │   ├── AuthContext.tsx          # Auth + Firebase Phone OTP
-│   │   ├── DonationContext.tsx      # Donation lifecycle + Supabase
-│   │   └── ThemeContext.tsx         # Light/Dark mode
-│   ├── layouts/
-│   │   ├── HotelApp.tsx            # Hotel portal shell
-│   │   └── VolunteerApp.tsx        # Volunteer portal shell
-│   ├── lib/
-│   │   ├── supabase.ts             # Supabase client
-│   │   ├── firebase.ts             # Firebase app + auth
-│   │   ├── routeService.ts         # OpenRouteService directions
-│   │   ├── notifications.ts        # FCM + in-app toasts
-│   │   └── exportService.ts        # CSV / Google Sheets export
-│   ├── pages/
-│   │   ├── hotel/                  # Dashboard, Donate, History, Requests, Settings
-│   │   ├── volunteer/              # Dashboard, Impact, Settings
-│   │   └── LoginPage.tsx           # Auth page with Phone OTP
-│   ├── App.tsx                     # Route orchestration
-│   ├── main.tsx                    # Entry point
-│   └── types.ts                    # TypeScript type definitions
-├── .env.local                      # Environment variables (not in git)
-├── package.json
-├── tailwind.config.js
-├── tsconfig.json
-└── vite.config.ts
-```
+### Core Directories
+- `src/` — Main React application source code.
+  - `components/` — UI components (Hotel, Volunteer, Shared).
+  - `contexts/` — State management (Auth, Donation, Theme).
+  - `layouts/` — Application shells for different portals.
+  - `lib/` — Third-party service integrations (Firebase, Supabase, API).
+  - `pages/` — Top-level route components.
+- `backend/` — Python-based backend services and API logic.
+- `database/` — SQL scripts and database schema definitions.
+- `docs/` — Detailed documentation, setup guides, and architecture overviews.
+- `scripts/` — Utility scripts for database verification and schema generation.
+
+### Important Files (Included in Repo)
+- `package.json` — Frontend dependencies and build scripts.
+- `vite.config.ts` — Vite configuration for the React app.
+- `tsconfig.json` — TypeScript configuration.
+- `.env.example` — Template for environment variables.
+- `AUTHENTICATION_FIXES_SUMMARY.md` — Detailed report on auth system improvements.
+
+### Ignored Files (NOT in Repo)
+> [!CAUTION]
+> The following files are excluded from Git to protect secrets and avoid bloat. They must be managed locally.
+
+- `.env` — Contains sensitive API keys and database credentials.
+- `node_modules/` — Managed by `npm install`.
+- `.venv/`, `.venv-1/` — Python virtual environments.
+- `dist/` — Compiled production build output.
+- `__pycache__/` — Python compiled files.
 
 ---
 
-## 📊 Donation Lifecycle
-
-```
-Hotel posts donation
-       │
-       ▼
-   [PENDING] ── Shows on volunteer map
-       │
-  Volunteer requests pickup
-       │
-       ▼
-  [REQUESTED] ── Hotel sees request with volunteer info
-       │
-  Hotel accepts (OTP generated)
-       │
-       ▼
-  [ASSIGNED] ── Volunteer navigates to hotel
-       │
-  Volunteer arrives, gives 4-digit code
-       │
-       ▼
-  [COMPLETED] ── Both get notification 🎉
-```
-
----
-
-## 🔑 API Keys Required
-
-| Service | Free Tier | Get Key |
-|---|---|---|
-| **Supabase** | ✅ 500MB DB, 2GB bandwidth | [supabase.com](https://supabase.com) |
-| **Firebase** | ✅ 10K SMS/month | [firebase.google.com](https://firebase.google.com) |
-| **OpenRouteService** | ✅ 2K requests/day | [openrouteservice.org](https://openrouteservice.org) |
-| **Google Gemini** | ✅ Free tier available | [ai.google.dev](https://ai.google.dev) |
+## 📊 Database Setup
+1. Use the scripts in `database/` to initialize your PostgreSQL instance.
+2. If using Supabase, apply the schema located in `supabase/schema.sql` (if applicable) or follow the `DATABASE_SETUP_GUIDE.md` in the `docs/` folder.
 
 ---
 
 ## 🤝 Contributing
+This is a private project. Please coordinate with the repository owner before making changes.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
+
+<div align="center">
+
+**Built with ❤️ to reduce food waste and feed communities**
+
+</div>
 
 ---
 

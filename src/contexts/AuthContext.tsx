@@ -1,8 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { User, Hotel, UserRole } from '../types';
-import { auth, RecaptchaVerifier, signInWithPhoneNumber } from '../lib/firebase';
-import { ConfirmationResult } from 'firebase/auth';
-import supabase from '../lib/supabase';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import { apiRequest, TOKEN_STORAGE_KEY } from '../lib/api';
+import { Hotel, User, UserRole } from '../types';
 
 interface AuthContextType {
   user: User | null;
@@ -10,13 +8,24 @@ interface AuthContextType {
   loading: boolean;
   register: (role: UserRole, data: any, password: string) => Promise<void>;
   login: (role: UserRole, identifier: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  sendPhoneOtp: (phoneNumber: string, recaptchaContainerId: string) => Promise<void>;
-  verifyPhoneOtp: (otp: string, role: UserRole, extraData?: any) => Promise<void>;
+  demoLogin: () => void;
+  updateProfile: (data: any) => Promise<void>;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+type AuthResponse = {
+  token?: string;
+  user: User;
+  hotelProfile?: Hotel;
+};
 
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const SESSION_KEY = 'foodconnect_session';
+
+/**
+ * Hook to access authentication context
+ * Throws error if used outside of AuthProvider
+ */
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -25,238 +34,348 @@ export const useAuth = () => {
   return context;
 };
 
-// Helper to normalize strings for emails
-const normalizeString = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '');
-const getHotelEmail = (name: string) => `${normalizeString(name)}@hotel.foodconnect.com`;
-const getVolEmail = (name: string) => `${normalizeString(name)}@vol.foodconnect.com`;
-const getPhoneEmail = (phone: string) => `${normalizeString(phone)}@phone.foodconnect.com`;
-// Secure constant password for phone-login users in this demo app
-const PHONE_AUTH_PASSWORD = 'FoodConnectPhoneLogin2024!';
+const buildHotelProfile = (user: User): Hotel => ({
+  id: user.id,
+  hotelName: user.hotelName || user.name,
+  address: user.address || '',
+  managerNumber: user.managerNumber || user.phone || '',
+  licenseNumber: user.licenseNumber || '',
+  createdAt: new Date().toISOString(),
+});
 
+/**
+ * AuthProvider Component
+ * 
+ * Manages authentication state, session persistence, and user data.
+ * 
+ * Features:
+ * - Automatic session restoration on app load
+ * - JWT token storage and retrieval
+ * - Login/Register/Logout functionality
+ * - Hotel profile management
+ * - Global unauthorized event handling
+ */
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [hotelProfile, setHotelProfile] = useState<Hotel | null>(null);
   const [loading, setLoading] = useState(true);
-  const confirmationResultRef = useRef<ConfirmationResult | null>(null);
-  const recaptchaVerifierRef = useRef<any>(null);
+  const initialized = useRef(false);
 
-  useEffect(() => {
-    // Check active session on load
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        fetchAndSetProfile(session.user);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        fetchAndSetProfile(session.user);
-      } else {
-        setUser(null);
-        setHotelProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+  /**
+   * Clears all session data (localStorage and state)
+   * Does NOT redirect - that's handled by the router when user becomes null
+   */
+  const logout = useCallback(() => {
+    console.log('[Auth] 🚪 Logging out user...');
+    
+    // Clear localStorage
+    localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    
+    // Clear state
+    setUser(null);
+    setHotelProfile(null);
+    
+    console.log('[Auth] ✅ Logout complete - user state cleared');
   }, []);
 
-  const fetchAndSetProfile = async (authUser: any) => {
+  /**
+   * Persists authentication data to localStorage
+   * Stores both session (user + profile) and token separately for redundancy
+   */
+  const persistSession = useCallback((payload: AuthResponse) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-        
-      if (error) throw error;
+      // Get token from payload or existing storage (for profile updates)
+      const existingRaw = localStorage.getItem(SESSION_KEY);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      const finalToken = payload.token || existing.token || localStorage.getItem(TOKEN_STORAGE_KEY);
       
-      const role = data.role as UserRole;
-      const appUser: User = {
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        role,
-        phone: data.phone,
-        avatar: data.avatar_url || 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=60',
+      if (!finalToken) {
+        console.warn('[Auth] ⚠️ No token available for persistence');
+      }
+
+      const sessionData: AuthResponse = {
+        ...payload,
+        token: finalToken || undefined,
       };
 
-      if (role === 'hotel') {
-        appUser.hotelName = data.hotel_name;
-        appUser.managerNumber = data.manager_number;
-        appUser.licenseNumber = data.license_number;
-        
-        const profile: Hotel = {
-          id: data.id,
-          hotelName: data.hotel_name,
-          address: data.address,
-          managerNumber: data.manager_number,
-          licenseNumber: data.license_number,
-          createdAt: data.created_at,
-        };
-        setHotelProfile(profile);
-      } else {
-        appUser.age = data.age;
-        appUser.vehicle = data.vehicle;
-        appUser.ngoName = data.ngo_name;
-        appUser.ngoNumber = data.ngo_number;
-        appUser.contactPerson = data.contact_person;
+      // Store session (user + profile + token)
+      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+      
+      // Store token separately for API requests
+      if (finalToken) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, finalToken);
       }
       
-      setUser(appUser);
-    } catch (err) {
-      console.error('Error fetching profile:', err);
-      setUser(null);
-      setHotelProfile(null);
-    } finally {
-      setLoading(false);
+      console.log('[Auth] 💾 Session persisted:', {
+        email: payload.user.email,
+        role: payload.user.role,
+        hasToken: !!finalToken,
+      });
+    } catch (error) {
+      console.error('[Auth] ❌ Failed to persist session:', error);
     }
-  };
+  }, []);
 
-  const register = async (role: UserRole, data: any, password: string) => {
-    let email: string;
-    if (role === 'hotel') {
-      email = getHotelEmail(data.hotelName);
-    } else {
-      email = getVolEmail(data.name || 'volunteer');
-    }
+  /**
+   * Restores session from localStorage on component mount
+   * This runs exactly ONCE when the app loads
+   */
+  useEffect(() => {
+    // Guard against running multiple times
+    if (initialized.current) return;
+    initialized.current = true;
 
-    const { data: authData, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          role,
-          name: role === 'hotel' ? data.hotelName : data.name || 'Volunteer',
-          phone: data.phone || data.managerNumber || '',
-          hotelName: data.hotelName, // Note: trigger mapping expects hotel_name to be hotelName in metadata
-          address: data.address,
-          managerNumber: data.managerNumber, // Trigger expects managerNumber
-          licenseNumber: data.licenseNumber, // Trigger expects licenseNumber
-          age: data.age,
-          vehicle: data.vehicle,
+    const restoreSession = () => {
+      console.log('[Auth] 🔄 Attempting to restore session from localStorage...');
+      
+      try {
+        const sessionRaw = localStorage.getItem(SESSION_KEY);
+        const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+
+        // Both session data and token must exist for valid session
+        if (!sessionRaw || !token) {
+          console.log('[Auth] ℹ️ No stored session found (fresh start or logged out)');
+          setUser(null);
+          setHotelProfile(null);
+          setLoading(false);
+          return;
         }
-      }
-    });
 
-    if (error) throw error;
-    
-    // Auto-login because Supabase might not return a session instantly if Email Confirmations are on,
-    // but our Postgres trigger auto-confirms the email!
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    if (signInError) throw signInError;
-    // The onAuthStateChange will handle fetching the profile
-  };
+        const session = JSON.parse(sessionRaw) as AuthResponse;
 
-  const login = async (role: UserRole, identifier: string, password: string) => {
-    // User might input email directly, otherwise we construct it
-    let email = identifier;
-    if (!identifier.includes('@')) {
-      email = role === 'hotel' ? getHotelEmail(identifier) : getVolEmail(identifier);
-    }
+        // Validate session has required fields
+        if (!session.user || !session.user.id || !session.user.email) {
+          throw new Error('Invalid session data - missing required fields');
+        }
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) throw new Error(error.message);
-  };
-
-  const logout = async () => {
-    try { await auth.signOut(); } catch { /* ignore firebase error */ }
-    const { error } = await supabase.auth.signOut();
-    if (error) console.error('Sign out error', error);
-  };
-
-  // ── Firebase Phone Auth ──
-
-  const sendPhoneOtp = async (phoneNumber: string, recaptchaContainerId: string) => {
-    try {
-      if (recaptchaVerifierRef.current) {
-        try { recaptchaVerifierRef.current.clear(); } catch { /* ignore */ }
-      }
-
-      const verifier = new RecaptchaVerifier(auth, recaptchaContainerId, {
-        size: 'invisible',
-        callback: () => { /* reCAPTCHA solved */ },
-      });
-      recaptchaVerifierRef.current = verifier;
-
-      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, verifier);
-      confirmationResultRef.current = confirmation;
-    } catch (err: any) {
-      if (recaptchaVerifierRef.current) {
-        try { recaptchaVerifierRef.current.clear(); } catch { /* ignore */ }
-        recaptchaVerifierRef.current = null;
-      }
-      throw new Error(err.message || 'Failed to send OTP. Please try again.');
-    }
-  };
-
-  const verifyPhoneOtp = async (otp: string, role: UserRole, extraData?: any) => {
-    if (!confirmationResultRef.current) {
-      throw new Error('No OTP was sent. Please request a new one.');
-    }
-
-    try {
-      const result = await confirmationResultRef.current.confirm(otp);
-      const firebaseUser = result.user;
-      const phoneNum = firebaseUser.phoneNumber || '';
-      const email = getPhoneEmail(phoneNum);
-
-      // Check if user exists in Supabase by attempting to sign in
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password: PHONE_AUTH_PASSWORD,
-      });
-
-      if (signInError) {
-        // User likely does not exist, so register them
-        const displayName = extraData?.name || firebaseUser.displayName || 'User';
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password: PHONE_AUTH_PASSWORD,
-          options: {
-            data: {
-              role,
-              name: role === 'hotel' ? extraData?.hotelName || displayName : displayName,
-              phone: phoneNum,
-              hotelName: extraData?.hotelName,
-              address: extraData?.address,
-              managerNumber: phoneNum,
-              licenseNumber: extraData?.licenseNumber,
-              age: extraData?.age,
-              vehicle: extraData?.vehicle,
-            }
-          }
+        // Successfully restored
+        console.log('[Auth] ✅ Session restored:', {
+          email: session.user.email,
+          role: session.user.role,
+          tokenLength: token.length,
         });
 
-        if (signUpError) {
-          throw new Error('Failed to create account: ' + signUpError.message);
-        }
+        setUser(session.user);
+        setHotelProfile(
+          session.hotelProfile || 
+          (session.user.role === 'hotel' ? buildHotelProfile(session.user) : null)
+        );
+      } catch (error) {
+        console.error('[Auth] ❌ Session restoration failed:', error);
+        // Clear corrupted session data
+        localStorage.removeItem(SESSION_KEY);
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        setUser(null);
+        setHotelProfile(null);
+      } finally {
+        // CRITICAL: Set loading to false so router can proceed
+        setLoading(false);
       }
+    };
+
+    restoreSession();
+
+    // Global handler for 401 Unauthorized responses (from apiRequest)
+    const handleUnauthorized = () => {
+      console.warn('[Auth] 📢 Received unauthorized event - clearing session');
+      logout();
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [logout]);
+
+  /**
+   * Updates React state and localStorage with new authentication data
+   * Called after successful login, register, or profile updates
+   */
+  const updateAuthState = useCallback((payload: AuthResponse) => {
+    console.log('[Auth] 🆙 Updating authentication state');
+    
+    // Build hotel profile if user is a hotel and profile not provided
+    const finalProfile = 
+      payload.hotelProfile || 
+      (payload.user.role === 'hotel' ? buildHotelProfile(payload.user) : null);
+    
+    // Update React state
+    setUser(payload.user);
+    setHotelProfile(finalProfile);
+    
+    // Persist to localStorage (with token)
+    persistSession({ ...payload, hotelProfile: finalProfile || undefined });
+  }, [persistSession]);
+
+  /**
+   * Login with credentials
+   * @param role - 'hotel' or 'volunteer'
+   * @param identifier - hotel name or phone number
+   * @param password - user password
+   */
+  const login = async (role: UserRole, identifier: string, password: string) => {
+    console.log(`[Auth] 🔑 Attempting login as ${role}: ${identifier}`);
+    
+    try {
+      const response = await apiRequest<AuthResponse>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ role, identifier, password }),
+      });
+
+      if (!response.user) {
+        throw new Error('Server returned invalid response - missing user data');
+      }
+
+      // Update state and storage
+      updateAuthState(response);
+      console.log('[Auth] ✅ Login successful:', response.user.email);
+    } catch (error) {
+      console.error('[Auth] ❌ Login failed:', error);
+      throw error; // Re-throw so UI can handle error display
+    }
+  };
+
+  /**
+   * Register a new user account
+   * @param role - 'hotel' or 'volunteer'
+   * @param data - user profile data (different fields based on role)
+   * @param password - new password
+   */
+  const register = async (role: UserRole, data: any, password: string) => {
+    console.log(`[Auth] 📝 Attempting registration as ${role}`);
+    
+    try {
+      const response = await apiRequest<AuthResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          role,
+          password,
+          data: {
+            name: data.name || data.hotelName || 'User',
+            hotelName: data.hotelName,
+            address: data.address,
+            managerNumber: data.managerNumber,
+            licenseNumber: data.licenseNumber,
+            phone: data.phone,
+            age: data.age,
+            vehicle: data.vehicle,
+            ngoName: data.ngoName,
+            ngoNumber: data.ngoNumber,
+            contactPerson: data.contactPerson,
+            email: data.email,
+          },
+        }),
+      });
+
+      if (!response.user) {
+        throw new Error('Server returned invalid response - missing user data');
+      }
+
+      updateAuthState(response);
+      console.log('[Auth] ✅ Registration successful');
+    } catch (error) {
+      console.error('[Auth] ❌ Registration failed:', error);
+      throw error;
+    }
+  };
+
+  /**
+   * Demo Login - Bypass real authentication with a demo user
+   * Used only for testing/development purposes
+   * @param role - 'hotel' or 'volunteer' to determine which demo user to load
+   */
+  const demoLogin = useCallback((role: UserRole = 'hotel') => {
+    console.log(`[Auth] 🎭 Demo login initiated for role: ${role}`);
+    
+    try {
+      let demoUser: User;
       
-      confirmationResultRef.current = null;
-    } catch (err: any) {
-      // Don't leak exact Supabase auth errors if Firebase succeeds but Supabase fails
-      if (err.code === 'auth/invalid-verification-code') {
-        throw new Error('Invalid OTP. Please check and try again.');
+      if (role === 'hotel') {
+        demoUser = {
+          id: 'demo-hotel-001',
+          email: 'demo@hotelparadise.com',
+          name: 'Hotel Paradise',
+          role: 'hotel',
+          hotelName: 'Hotel Paradise',
+          address: '123 Premium St, Mumbai',
+          phone: '+91 98765 43210',
+          managerNumber: '+91 98765 43210',
+          licenseNumber: 'FSSAI-2024-001',
+        };
+      } else {
+        demoUser = {
+          id: 'demo-volunteer-001',
+          email: 'demo@volunteer.com',
+          name: 'Alex Johnson',
+          role: 'volunteer',
+          phone: '+91 98765 12345',
+          address: 'Mumbai, India',
+          age: 28,
+          vehicle: 'Motorcycle',
+        };
       }
-      throw new Error(err.message || 'Verification failed.');
+
+      const demoToken = `demo_token_${role}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      updateAuthState({
+        token: demoToken,
+        user: demoUser,
+        hotelProfile: demoUser.role === 'hotel' ? buildHotelProfile(demoUser) : undefined,
+      });
+
+      console.log(`[Auth] ✅ Demo login successful - user logged in as ${demoUser.name}`);
+    } catch (error) {
+      console.error('[Auth] ❌ Demo login failed:', error);
+      throw error;
+    }
+  }, [updateAuthState]);
+
+  /**
+   * Update user profile data
+   * Called when user modifies their profile information
+   */
+  const updateProfile = async (data: any) => {
+    if (!user) {
+      throw new Error('Cannot update profile - not logged in');
+    }
+
+    console.log('[Auth] 🔄 Updating user profile...');
+    
+    try {
+      const response = await apiRequest<AuthResponse>(`/users/${user.id}/profile`, {
+        method: 'PATCH',
+        body: JSON.stringify({ data }),
+      });
+
+      if (!response.user) {
+        throw new Error('Server returned invalid response');
+      }
+
+      // Note: Server may not return token on profile update, merge with existing token
+      updateAuthState(response);
+      console.log('[Auth] ✅ Profile updated');
+    } catch (error) {
+      console.error('[Auth] ❌ Profile update failed:', error);
+      throw error;
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, hotelProfile, loading, register, login, logout, sendPhoneOtp, verifyPhoneOtp }}>
+    <AuthContext.Provider 
+      value={{ 
+        user, 
+        hotelProfile, 
+        loading, 
+        register, 
+        login, 
+        demoLogin,
+        updateProfile, 
+        logout 
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
+
+export default AuthProvider;
+
