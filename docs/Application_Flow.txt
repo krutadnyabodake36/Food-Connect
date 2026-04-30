@@ -1,0 +1,44 @@
+FoodConnect - Application Lifecycle and Full Flow
+
+Flow Phase 1: User Onboarding and Identity Verification
+1. Registration/Login: Both Volunteers and Hotel Partners open the web portal.
+2. OTP Authentication: User inputs their phone number. Firebase Authentication sends a 4-6 digit SMS OTP.
+3. Verification: User inputs the OTP. Upon success, Firebase issues a JWT.
+4. Database Mapping: The backend matches the Phone Number/Firebase UID against the `users` PostgreSQL table. The system dynamically routes the user to the Hotel App Layout or Volunteer App Layout based on their mapped role.
+5. Profile Creation: Inserts into `hotel` or `volunteer` tables based on role.
+
+Flow Phase 2: Donation Generation (Hotel Flow)
+1. Post Creation: The Hotel Partner navigates to the "Donate" page.
+2. Data Input: They enter food details: Total weight, food tags (e.g., biryani, rice), and a pickup expiration window.
+3. Database Commit: The frontend submits data to the Supabase database. A new row is inserted into `donations`, and multiple rows are inserted into `donation_tags`.
+4. Real-time Broadcast: Supabase Realtime triggers an event over WebSockets broadcasting that a new `PENDING` donation exists.
+
+Flow Phase 3: Volunteer Discovery (Volunteer Flow)
+1. Live Mapping: Volunteers have a Leaflet Map open. The WebSocket broadcast is caught by the frontend, rendering a new map pin instantly without a page refresh.
+2. Routing & Decision: The volunteer taps the pin. The app pings the OpenRouteService API to calculate actual road distance and ETA from their current GPS location to the Hotel.
+3. Claim Request: The Volunteer taps "Request Pickup". The app inserts a row into `claims_record` with the status `pending`.
+
+Flow Phase 4: Hotel Approval and Verification Setup
+1. Claim Notification: The Hotel dashboard receives a real-time event that a volunteer has requested a pickup.
+2. Acceptance: The Hotel clicks "Accept". The `claims_record` status shifts to `accepted`.
+3. OTP Generation: The backend generates a secure `pickup_hash` (or raw OTP) and inserts it into the `verification` table mapped to this claim.
+4. Volunteer Notification: The volunteer receives an FCM push notification: "Your pickup request was accepted!" and their UI transitions to Navigation Mode.
+
+Flow Phase 5: Handoff and Completion
+1. Physical Arrival: The Volunteer uses the app's turn-by-turn navigation to arrive at the Hotel.
+2. Handshake Verification: The Volunteer shows their app screen, which displays the 4-digit Pickup Code.
+3. Final Authorization: The Hotel inputs this code into their portal. The system validates the code against the `verification` table.
+4. State Resolution: If successful, the `claims_record` updates to `delivered`. The volunteer's gamification points (score) increase in the `volunteer` table. Both users receive a success notification.
+
+Flow Phase 6: Impact and Reporting
+1. History Generation: Delivered claims move to the "Donation History" tab.
+2. AI Video Generation: The hotel can request an impact summary. The Gemini API analyzes food photos and data to generate rich summaries.
+3. CSV Export: Hotel can download statistical reports for audit purposes using the Export Service.
+4. Database Operations: Complex queries aggregating data from multiple tables for reports.
+
+Database-Centric Flow Details:
+- All state transitions are managed through database updates with ACID compliance
+- Real-time synchronization uses Supabase WebSocket subscriptions
+- Security validations occur at database level with constraints and checks
+- Audit trails maintained through timestamp columns in all transaction tables
+- Performance optimized through strategic indexing for geospatial and temporal queries

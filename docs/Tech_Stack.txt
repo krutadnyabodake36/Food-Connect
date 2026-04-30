@@ -1,0 +1,41 @@
+FoodConnect - Technology Stack
+
+Frontend Technologies
+- React 18: Core UI library for building dynamic, component-based user interfaces.
+- TypeScript: Adds static typing to JavaScript, ensuring robust and maintainable code.
+- Vite: Next-generation frontend tooling providing rapid hot-module replacement and optimized builds.
+- Tailwind CSS: Utility-first CSS framework for rapid, responsive styling.
+- Framer Motion: Animation library to implement smooth transitions and micro-interactions.
+
+Backend & Database Layer
+- Supabase: Primary Backend-as-a-Service (BaaS).
+  - PostgreSQL: Relational database management system storing all entities (Users, Hotels, Volunteers, Donations, etc.).
+  - Supabase Realtime: Uses WebSockets to broadcast database changes to connected clients instantly.
+  - Row Level Security (RLS): Secures data access directly at the database level.
+- FastAPI / Python Backend (Optional/Supplemental): Provides additional API endpoints and scripts (like `scripts/verify_db.py` and `backend/main.py`) for backend processing and complex logic execution.
+- Database Connection: psycopg2 library for direct PostgreSQL connections in Python backend.
+
+Database Management System (DBMS) Details
+- PostgreSQL Version: Latest stable version via Supabase
+- Schema Design: Strict ER model with normalized tables
+- Constraints: Foreign keys, unique constraints, check constraints for data integrity
+- Indexing: Strategic indexes on frequently queried columns (role, timestamps, geospatial data)
+- Real-time Capabilities: Supabase Realtime for instant synchronization
+- Backup & Recovery: Automatic via Supabase infrastructure
+- Performance: Optimized queries with proper indexing for high concurrency
+
+Authentication & Security
+- Firebase Authentication: Implements Phone Number OTP login, ensuring that both hotel representatives and volunteers use verified phone numbers.
+- Firebase Cloud Messaging (FCM): Handles native-like push notifications to web/mobile clients.
+- JWT Tokens: Issued by backend for session management
+- Password Hashing: PBKDF2 with salt for secure password storage
+
+Geospatial & Mapping Services
+- Leaflet Map & React-Leaflet: Open-source Javascript library providing an interactive map interface for volunteers to browse active donations.
+- Supercluster: Algorithms for rendering dense clusters of donation pins efficiently on the map.
+- OpenRouteService API: Calculates turn-by-turn navigation, real-world driving distances, and Estimated Time of Arrival (ETA).
+
+AI & Export Integrations
+- Google Gemini API: Leveraged to process donation images and generate dynamic "impact videos" or detailed summaries.
+- Recharts: Used for visualizing impact and statistics in the dashboards.
+- Google Sheets API / CSV Export: Enables hotels to export and audit their donation history for ESG and tax compliance reporting.

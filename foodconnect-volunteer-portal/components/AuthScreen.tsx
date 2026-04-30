@@ -263,6 +263,30 @@ const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
             )}
           </button>
 
+          {/* Demo Login Button - Only show on login screen */}
+          {isLogin && (
+            <button 
+              type="button"
+              onClick={() => {
+                const demoVolunteer: UserType = {
+                  id: 'demo-volunteer-001',
+                  name: 'Alex Johnson',
+                  email: 'alex@foodconnect.com',
+                  role: 'volunteer',
+                  avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&auto=format&fit=crop&q=60',
+                  phone: '+91 98765 43210',
+                  address: 'Mumbai, India',
+                  age: 28,
+                  vehicle: 'Motorcycle',
+                };
+                onLogin(demoVolunteer);
+              }}
+              className="w-full mt-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl py-3 shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 border border-amber-400/30"
+            >
+              🧭 Demo Login (Volunteer)
+            </button>
+          )}
+
         </form>
 
         {/* Footer */}

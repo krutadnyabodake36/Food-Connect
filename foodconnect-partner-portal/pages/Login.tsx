@@ -12,21 +12,23 @@ const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const sanitizeHotelName = (name: string) => {
-    return name.toLowerCase().replace(/[^a-z0-9]/g, '') + '@foodconnect.app';
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    if (!hotelName.trim() || !password) {
+      setError('Please enter both hotel name and password.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const email = sanitizeHotelName(hotelName);
-      await login(email, password);
+      // The backend supports logging in with the Hotel Name directly as the identifier
+      await login(hotelName.trim(), password);
       navigate('/dashboard');
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to login. Please check your hotel name and password.');
+      console.error('Login Error:', err);
+      setError(err.message || 'Failed to login. Please check your credentials.');
     } finally {
       setLoading(false);
     }
@@ -128,7 +130,7 @@ const Login: React.FC = () => {
                     required
                     value={hotelName}
                     onChange={(e) => setHotelName(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
+                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
                     placeholder="e.g. Grand Plaza Hotel"
                   />
                 </div>
@@ -149,7 +151,7 @@ const Login: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
+                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
                     placeholder="••••••••"
                   />
                 </div>
@@ -179,7 +181,7 @@ const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-forest-600 hover:bg-forest-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
+              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-forest-600 hover:bg-forest-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5"
             >
               {loading ? (
                 <Loader2 className="animate-spin h-5 w-5" />
@@ -189,6 +191,24 @@ const Login: React.FC = () => {
                   <ArrowRight size={18} />
                 </>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await login('Grand Plaza Hotel', 'password123');
+                  navigate('/dashboard');
+                } catch (err) {
+                  setError('Demo login failed');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-amber-500 rounded-xl shadow-md text-sm font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all duration-200 transform hover:-translate-y-0.5 mt-3"
+            >
+              🧭 Demo Login (Hotel)
             </button>
 
             <div className="mt-6 text-center">

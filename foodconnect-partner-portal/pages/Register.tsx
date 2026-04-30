@@ -15,32 +15,63 @@ const Register: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const sanitizeHotelName = (name: string) => {
-    return name.toLowerCase().replace(/[^a-z0-9]/g, '') + '@foodconnect.app';
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    
+    // --- 1. Frontend Validation Logic ---
+    
+    // Automatic cleanup of phone number (remove +91 and spaces)
+    const cleanPhone = managerNumber.replace('+91', '').replace(/\s/g, '');
+    
+    // Check for empty fields
+    if (!hotelName.trim() || !address.trim() || !cleanPhone || !licenseNumber.trim() || !password) {
+      setError('All fields are required. Please fill out the entire form.');
+      return;
+    }
 
-    if (password.length < 6) {
-      setError('Password should be at least 6 characters.');
+    // Phone validation (Exactly 10 digits as per backend requirement)
+    if (cleanPhone.length !== 10 || !/^\d+$/.test(cleanPhone)) {
+      setError('Phone number must be exactly 10 digits (without country code).');
+      return;
+    }
+
+    // Password validation (Minimum 8 characters)
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
     setLoading(true);
+
+    // --- 2. Payload Mapping to Backend Schema ---
+    // Backend expects: { role: 'hotel', password: '...', data: { hotelName, address, managerNumber, licenseNumber } }
+    const payload = {
+      role: 'hotel',
+      password: password,
+      data: {
+        hotelName: hotelName.trim(), // Maps to UI "Hotel Name"
+        address: address.trim(),     // Maps to UI "Address"
+        managerNumber: cleanPhone,   // Maps to UI "Manager Number"
+        licenseNumber: licenseNumber.trim() // Maps to UI "License Number" (FSSAI)
+      }
+    };
+
+    // --- 3. Debugging Logs ---
+    console.log('--- SIGNUP ATTEMPT ---');
+    console.log('Payload structure:', JSON.stringify(payload, null, 2));
+
     try {
-      const email = sanitizeHotelName(hotelName);
-      await register(email, password, {
-        hotelName,
-        address,
-        managerNumber,
-        licenseNumber
-      });
+      await register(payload);
+      console.log('Registration successful!');
       navigate('/dashboard');
     } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Failed to register. Please check your details and try again.');
+      // --- 4. Detailed Error Handling ---
+      console.error('Registration API Error:', err);
+      
+      // If the error comes from our api/fetch handler, it typically has a message or detail
+      const errorMessage = err.message || 'Validation error — please check your request fields.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -122,7 +153,7 @@ const Register: React.FC = () => {
                 className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2"
               >
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                {error}
+                <span className="flex-1">{error}</span>
               </motion.div>
             )}
 
@@ -142,7 +173,7 @@ const Register: React.FC = () => {
                     required
                     value={hotelName}
                     onChange={(e) => setHotelName(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
+                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
                     placeholder="e.g. Grand Plaza Hotel"
                   />
                 </div>
@@ -150,7 +181,7 @@ const Register: React.FC = () => {
 
               <div>
                 <label htmlFor="address" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1.5">
-                  Address
+                  Hotel Address
                 </label>
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -163,8 +194,8 @@ const Register: React.FC = () => {
                     required
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
-                    placeholder="e.g. 123 Main St, City"
+                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
+                    placeholder="e.g. 123 Main St, Mumbai"
                   />
                 </div>
               </div>
@@ -172,7 +203,7 @@ const Register: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="managerNumber" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1.5">
-                    Manager's Number
+                    Manager's Phone
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -185,15 +216,15 @@ const Register: React.FC = () => {
                       required
                       value={managerNumber}
                       onChange={(e) => setManagerNumber(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
-                      placeholder="+91 98765 43210"
+                      className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
+                      placeholder="10-digit number"
                     />
                   </div>
                 </div>
 
                 <div>
                   <label htmlFor="licenseNumber" className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-1.5">
-                    Food License No.
+                    License Number (FSSAI)
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -206,8 +237,8 @@ const Register: React.FC = () => {
                       required
                       value={licenseNumber}
                       onChange={(e) => setLicenseNumber(e.target.value)}
-                      className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
-                      placeholder="e.g. FSSAI-123456"
+                      className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
+                      placeholder="e.g. 12345678901234"
                     />
                   </div>
                 </div>
@@ -228,8 +259,8 @@ const Register: React.FC = () => {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200"
-                    placeholder="Create a password"
+                    className="block w-full pl-10 pr-3 py-3 border border-stone-200 dark:border-stone-800 rounded-xl bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-white placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all duration-200 shadow-sm"
+                    placeholder="Min. 8 characters"
                   />
                 </div>
               </div>
@@ -238,13 +269,13 @@ const Register: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-forest-600 hover:bg-forest-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5 mt-6"
+              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-semibold text-white bg-forest-600 hover:bg-forest-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-forest-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:-translate-y-0.5 mt-6"
             >
               {loading ? (
                 <Loader2 className="animate-spin h-5 w-5" />
               ) : (
                 <>
-                  Create Account
+                  Complete Registration
                   <ArrowRight size={18} />
                 </>
               )}

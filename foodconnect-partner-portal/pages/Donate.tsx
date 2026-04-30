@@ -28,6 +28,7 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
   const [startTime, setStartTime] = useState(startT);
   const [endTime, setEndTime] = useState(endT);
   const [isUrgent, setIsUrgent] = useState(initialData?.isUrgent || false);
+  const [expiryDate, setExpiryDate] = useState<string>('');  // NEW: Expiry date/time
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +115,11 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!expiryDate) {
+      alert('Please set an expiry date and time for the food');
+      return;
+    }
+    
     // Construct new donation object
     const newDonation: Partial<Donation> = {
         title,
@@ -122,6 +128,7 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
         pickupWindow: `${startTime} - ${endTime}`,
         imageUrl: previewUrl || undefined,
         isUrgent,
+        expiryDate: new Date(expiryDate).toISOString(),  // Convert to ISO format
     };
 
     onSave(newDonation);
@@ -359,6 +366,20 @@ const Donate: React.FC<DonateProps> = ({ onSave, initialData }) => {
                     </div>
                 </div>
             </div>
+        </div>
+
+        {/* Expiry Date/Time - NEW */}
+        <div>
+            <label className="block text-sm font-medium text-stone-700 dark:text-stone-300 mb-2">Food Expiry Date & Time *</label>
+            <input
+                type="datetime-local"
+                value={expiryDate}
+                onChange={(e) => setExpiryDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 16)}
+                required
+                className="w-full px-4 py-2.5 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-forest-500/20 focus:border-forest-500 transition-all placeholder:text-stone-400"
+            />
+            <p className="text-xs text-stone-500 dark:text-stone-400 mt-1">When the food will go bad. Volunteers must pick up before this time.</p>
         </div>
 
         {/* Urgent Flag */}

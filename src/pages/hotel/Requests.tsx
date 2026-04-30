@@ -9,7 +9,7 @@ interface RequestsProps {
   onReject: (id: string) => void;
   onComplete: (id: string) => void;
   onEdit: (id: string) => void;
-  onVerifyComplete?: (id: string, code: string) => boolean;
+  onVerifyComplete?: (id: string, code: string) => Promise<boolean> | boolean;
 }
 
 const StatusBadge = ({ status }: { status: string }) => {
@@ -29,10 +29,11 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 // OTP Input Component
-const OtpVerify = ({ donationId, onVerify }: { donationId: string; onVerify: (id: string, code: string) => boolean }) => {
+const OtpVerify = ({ donationId, onVerify }: { donationId: string; onVerify: (id: string, code: string) => Promise<boolean> | boolean }) => {
   const [digits, setDigits] = useState(['', '', '', '']);
   const [error, setError] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const handleChange = (index: number, value: string) => {
     if (!/^\d*$/.test(value)) return;
@@ -55,10 +56,12 @@ const OtpVerify = ({ donationId, onVerify }: { donationId: string; onVerify: (id
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     const code = digits.join('');
     if (code.length !== 4) { setError(true); return; }
-    const result = onVerify(donationId, code);
+    setVerifying(true);
+    const result = await onVerify(donationId, code);
+    setVerifying(false);
     if (result) {
       setSuccess(true);
     } else {
@@ -115,10 +118,10 @@ const OtpVerify = ({ donationId, onVerify }: { donationId: string; onVerify: (id
 
       <button
         onClick={handleVerify}
-        disabled={digits.some(d => !d)}
+        disabled={digits.some(d => !d) || verifying}
         className="w-full py-3 bg-forest-700 hover:bg-forest-800 disabled:bg-stone-300 disabled:dark:bg-stone-700 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors"
       >
-        <ShieldCheck size={18} /> Verify & Complete
+        {verifying ? <Loader2 size={18} className="animate-spin" /> : <ShieldCheck size={18} />} Verify & Complete
       </button>
     </div>
   );
@@ -149,7 +152,7 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
             {/* Header */}
             <div className="p-6 border-b border-stone-100 dark:border-stone-800">
               <div className="flex gap-4">
-                {d.imageUrl ? <img src={d.imageUrl} alt="" className="w-20 h-20 rounded-lg object-cover flex-shrink-0" /> : <div className="w-20 h-20 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center"><User size={24} /></div>}
+                {d.imageUrl ? <img src={d.imageUrl} alt="" onError={(e) => { (e.currentTarget as HTMLImageElement).src = 'https://images.unsplash.com/photo-1547592180-85f173990554?w=400&auto=format&fit=crop&q=60'; }} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" /> : <div className="w-20 h-20 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center"><User size={24} /></div>}
                 <div className="flex-1">
                   <div className="flex justify-between items-start">
                     <div>
@@ -164,7 +167,7 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
                   </div>
                   <div className="mt-2 flex gap-2">
                     {d.tags.map(t => <span key={t} className="px-2 py-0.5 text-xs bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded">{t}</span>)}
-                    <span className="px-2 py-0.5 text-xs bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded">{d.weight} kg</span>
+                    <span className="px-2 py-0.5 text-xs bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 rounded">{d.weight} {d.quantityUnit || 'kg'}</span>
                   </div>
                 </div>
                 <button onClick={() => onEdit(d.id)} className="p-2 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-lg self-start"><Pencil size={18} /></button>
@@ -174,6 +177,7 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
             {/* Active Request */}
             {d.status === 'pending' && d.activeRequest && (
               <div className="bg-forest-50 dark:bg-forest-900/20 p-6 border-b border-forest-100 dark:border-forest-800/50">
+                {console.log(`✅ [Requests] Donation ${d.id}: ACTIVE REQUEST FOUND`, d.activeRequest)}
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 rounded-full bg-forest-100 flex items-center justify-center text-forest-600"><User size={24} /></div>
                   <div className="flex-1">
@@ -182,13 +186,31 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
                       <span className="text-xs bg-white dark:bg-stone-800 px-1.5 py-0.5 rounded-full border border-stone-200 dark:border-stone-700 flex items-center"><ShieldCheck size={12} className="mr-1 text-forest-500" />Verified</span>
                     </h4>
                     <div className="flex gap-3 mt-1 text-sm text-stone-500">
-                      <span>⭐ {d.activeRequest.rating}</span>
-                      <span>{d.activeRequest.distanceKm} km</span>
-                      <span>ETA {d.activeRequest.etaMinutes} min</span>
+                      {d.activeRequest.phone && <span className="flex items-center gap-1"><Phone size={12} />{d.activeRequest.phone}</span>}
+                      {d.activeRequest.vehicle && <span>{d.activeRequest.vehicle}</span>}
+                      {d.activeRequest.rating != null && <span>⭐ {d.activeRequest.rating}</span>}
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <button onClick={() => onReject(d.id)} className="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"><X size={16} />Decline</button>
-                      <button onClick={() => onAccept(d.id)} className="px-3 py-1.5 text-sm font-medium text-white bg-forest-600 hover:bg-forest-700 rounded-lg flex items-center gap-1"><Check size={16} />Accept</button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Decline this pickup request?')) {
+                            onReject(d.id);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-1"
+                      >
+                        <X size={16} />Decline
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('Accept this pickup request? A verification hash will be generated.')) {
+                            onAccept(d.id);
+                          }
+                        }}
+                        className="px-3 py-1.5 text-sm font-medium text-white bg-forest-600 hover:bg-forest-700 rounded-lg flex items-center gap-1"
+                      >
+                        <Check size={16} />Accept
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -196,7 +218,9 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
             )}
 
             {d.status === 'pending' && !d.activeRequest && (
-              <div className="p-4 bg-stone-50 dark:bg-stone-800/50 flex items-center justify-center gap-2 text-stone-500 text-sm italic"><Loader2 size={16} className="animate-spin" />Waiting for volunteers...</div>
+              <div className="p-4 bg-stone-50 dark:bg-stone-800/50 flex items-center justify-center gap-2 text-stone-500 text-sm italic">
+                {console.log(`❌ [Requests] Donation ${d.id}: NO ACTIVE REQUEST - Still waiting`, {status: d.status, hasActiveRequest: !!d.activeRequest})}
+                <Loader2 size={16} className="animate-spin" />Waiting for volunteers...</div>
             )}
 
             {/* Tracking + OTP Verification */}
@@ -218,7 +242,7 @@ const Requests: React.FC<RequestsProps> = ({ donations, onAccept, onReject, onCo
                       <span className="relative flex h-2 w-2"><span className="animate-ping absolute h-full w-full rounded-full bg-forest-400 opacity-75"></span><span className="relative h-2 w-2 rounded-full bg-forest-500"></span></span>
                       Live Tracking
                     </div>
-                    <LiveMap tracking={d.tracking} />
+                    <LiveMap tracking={d.tracking} donationId={d.id} />
                     <div className="absolute bottom-0 inset-x-0 bg-white/90 dark:bg-stone-900/90 backdrop-blur border-t p-3 flex justify-between items-center text-xs">
                       <div className="flex items-center gap-2"><Navigation size={14} className="text-forest-600" />{d.tracking.status === 'on_route' ? 'On the way' : 'Arrived'}</div>
                       <div className="font-medium">ETA: {d.assignedVolunteer.etaMinutes} mins</div>

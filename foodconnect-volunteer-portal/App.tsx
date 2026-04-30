@@ -48,6 +48,30 @@ const App: React.FC = () => {
     setIsNavigating(false); // Reset navigation when selecting a new marker
   };
 
+  // NEW: Handle pickup acceptance with claimed quantity
+  const handleAcceptPickup = async (donationId: string, claimedQuantity: number, quantityUnit: string) => {
+    try {
+      const response = await fetch(`/api/donations/${donationId}/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          volunteerInfo: { id: user!.id, name: user!.name, phone: user!.phone },
+          claimedQuantity,  // Pass what volunteer claims to pick
+          claimedUnit: quantityUnit,  // Pass the unit type
+        }),
+      });
+      
+      if (response.ok) {
+        setIsNavigating(true);
+      } else {
+        alert('Failed to request pickup');
+      }
+    } catch (error) {
+      console.error('Error requesting pickup:', error);
+      alert('Error requesting pickup');
+    }
+  };
+
   const handleLogin = (loggedInUser: User) => {
     setUser(loggedInUser);
   };
@@ -242,7 +266,7 @@ const App: React.FC = () => {
             selectedId={selectedId}
             onCloseDetail={() => { setSelectedId(null); setIsNavigating(false); }}
             onSelectDonation={handleMarkerClick}
-            onAcceptPickup={() => setIsNavigating(true)}
+            onAcceptPickup={handleAcceptPickup}  // NEW: Pass the handler with claimed quantity
             isNavigating={isNavigating}
           />
         </>

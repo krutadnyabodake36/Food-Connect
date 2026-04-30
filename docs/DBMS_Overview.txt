@@ -1,0 +1,49 @@
+FoodConnect - Database Management System (DBMS) Overview
+
+1. Architectural Core
+The database is built on PostgreSQL, utilizing a strict Relational Database Management System (RDBMS) architecture. It deeply enforces Data Integrity through strict foreign key constraints, check constraints, unique constraints, and cascade delete rules.
+
+2. Entity-Relationship Schema Breakdown
+
+a) Users Table (`users`)
+- Acts as the central identity registry using a polymorphic relationship model via standard inheritance logic mapping.
+- Attributes: user_id (PK), password, email (UNIQUE), phone (UNIQUE), role (ENUM/CHECK: 'hotel', 'volunteer', 'admin').
+- Strategy: By isolating authentication details and roles into a master table, it ensures that a user can be cross-referenced regardless of their functional role.
+
+b) Hotel Table (`hotel`)
+- Represents a 1:1 relationship with the `users` table via `user_id`.
+- Attributes: h_id (PK), user_id (FK, UNIQUE), h_name, address, fssai (UNIQUE).
+- Strict referential integrity: If a user is deleted, their hotel record is CASCADE deleted.
+
+c) Volunteer Table (`volunteer`)
+- Represents a 1:1 relationship with the `users` table.
+- Attributes: vol_id (PK), user_id (FK, UNIQUE), vol_name, vehicle_type, score.
+- Implements a CHECK constraint to ensure `score >= 0`, maintaining gamification integrity.
+
+d) Donations Table (`donations`)
+- Represents a 1:N relationship from the Hotel table (One hotel posts many donations).
+- Attributes: d_id (PK), h_id (FK), total_wt (CHECK > 0), exp_time, created_at.
+- Maintains strict time tracking for expiration.
+
+e) Donation Tags (`donation_tags`)
+- Normalizes multi-valued attributes for a single donation (e.g., a donation with 'rice', 'biryani', 'noodles').
+- Attributes: tag_id (PK), d_id (FK), tag.
+- Constraint: UNIQUE(d_id, tag) prevents duplicate tags on a single donation.
+
+f) Claims Record Table (`claims_record`)
+- Acts as the Association Entity mapping the N:M relationship between Volunteers and Donations. (A volunteer can claim multiple donations; a donation can be part of the records).
+- Attributes: c_id (PK), d_id (FK), vol_id (FK), status (CHECK: 'pending', 'accepted', 'delivered'), c_wt (CHECK > 0), timestamp.
+
+g) Verification Table (`verification`)
+- Represents a 1:1 mapping with `claims_record` ensuring cryptographic/hash-based security for handoffs.
+- Attributes: ve_id (PK), c_id (FK, UNIQUE), exp_time, pickup_hash, delivery_hash, verified_at.
+
+3. Indexing & Optimization
+Specific indexes are created for performance tuning during high-concurrency geographical querying:
+- Role checks: `CREATE INDEX idx_users_role ON users(role)`
+- Fast lookup for maps/donations: `idx_donations_h_id`, `idx_donations_exp_time`
+- Dashboard load optimization: `idx_claims_d_id`, `idx_claims_vol_id`, `idx_claims_status`
+
+4. Concurrency & Integrity Features
+- ACID Compliance: Native to PostgreSQL, ensuring transactions (like accepting a food claim) are completely atomic. No partial claims are recorded if a system failure occurs.
+- Database Triggers/Constraints: Avoids negative weights, enforces valid tags, and mandates explicit statuses through complex `CHECK` conditions rather than relying purely on frontend validation.

@@ -77,7 +77,8 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
         slideX.set(max);
         setIsConfirmed(true);
         setTimeout(() => {
-            onAcceptPickup(selectedId!);
+            // NEW: Pass claimQuantity and quantityUnit to backend
+            onAcceptPickup(selectedId!, claimQuantity, selectedDonation?.quantityUnit || 'kg');
         }, 500);
     } else {
         slideX.set(0);
@@ -191,12 +192,12 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
 
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col items-center text-center gap-2">
-                <div className="p-2 bg-white rounded-full shadow-sm text-emerald-600">
+                <div className="p-2 bg-white rounded-full shadow-sm text-orange-600">
                   <Weight className="w-5 h-5" />
                 </div>
                 <div>
-                  <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total Weight</div>
-                  <div className="text-lg font-bold text-slate-900">{selectedDonation.quantity} kg</div>
+                  <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-0.5">Total {selectedDonation?.quantityUnit === 'kg' ? 'Weight' : 'Quantity'}</div>
+                  <div className="text-lg font-bold text-slate-900">{selectedDonation?.weight} <span className="text-sm text-slate-500">{selectedDonation?.quantityUnit || 'kg'}</span></div>
                 </div>
               </div>
               
@@ -238,17 +239,17 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
                       </div>
                       <div className="text-right">
                         <span className="text-3xl font-bold text-emerald-600">{claimQuantity}</span>
-                        <span className="text-sm text-slate-400 font-medium ml-1">kg</span>
+                        <span className="text-sm text-slate-400 font-medium ml-1">{selectedDonation?.quantityUnit || 'kg'}</span>
                       </div>
                   </div>
                   <input 
-                      type="range" min={1} max={selectedDonation.quantity} value={claimQuantity}
+                      type="range" min={1} max={selectedDonation?.weight || 1} value={claimQuantity}
                       onChange={(e) => setClaimQuantity(Number(e.target.value))}
                       className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-emerald-600 hover:accent-emerald-500 transition-all"
                   />
                   <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
-                    <span>1 kg</span>
-                    <span>{selectedDonation.quantity} kg</span>
+                    <span>1 {selectedDonation?.quantityUnit || 'kg'}</span>
+                    <span>{selectedDonation?.weight} {selectedDonation?.quantityUnit || 'kg'}</span>
                   </div>
               </div>
             ) : (
@@ -259,7 +260,7 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
                 <div>
                   <h4 className="font-bold text-emerald-900 text-sm mb-1">Pickup Confirmed</h4>
                   <p className="text-xs text-emerald-700 leading-relaxed">
-                    You have confirmed to pick up <strong>{claimQuantity} kg</strong>. Please reach the location before {selectedDonation.pickupTime}.
+                    You have confirmed to pick up <strong>{claimQuantity} {selectedDonation?.quantityUnit || 'kg'}</strong>. Please reach the location before {selectedDonation?.pickupTime}.
                   </p>
                 </div>
               </div>
@@ -366,7 +367,7 @@ const DonationSheet: React.FC<DonationSheetProps> = ({ donations, selectedId, on
                                                 <MapPin className="w-3 h-3 text-emerald-600" /> {donation.distance}
                                             </div>
                                             <div className="flex items-center gap-1 text-xs font-semibold bg-slate-50 px-2 py-1 rounded-md">
-                                                <Weight className="w-3 h-3 text-emerald-600" /> {donation.quantity}kg
+                                                <Weight className="w-3 h-3 text-emerald-600" /> {donation.weight}{donation.quantityUnit || 'kg'}
                                             </div>
                                         </div>
                                         

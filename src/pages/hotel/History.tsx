@@ -65,8 +65,8 @@ const History: React.FC<HistoryProps> = ({ donations, onRate }) => {
               <p className="text-xl font-bold text-stone-900 dark:text-stone-100 mt-0.5">{stats.total}</p>
             </div>
             <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl px-4 py-3">
-              <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">Total Weight</p>
-              <p className="text-xl font-bold text-forest-600 dark:text-forest-400 mt-0.5">{stats.totalWeight} kg</p>
+              <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">Total Quantity</p>
+              <p className="text-xl font-bold text-forest-600 dark:text-forest-400 mt-0.5">{stats.totalWeight}</p>
             </div>
             <div className="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl px-4 py-3">
               <p className="text-xs text-stone-500 dark:text-stone-400 font-medium">Completed</p>
@@ -101,7 +101,7 @@ const History: React.FC<HistoryProps> = ({ donations, onRate }) => {
                             <h3 className="font-semibold text-lg text-stone-900 dark:text-stone-100">{item.title}</h3>
                             <span className="text-stone-500 dark:text-stone-400 text-sm">{item.timestamp}</span>
                         </div>
-                        <p className="text-stone-600 dark:text-stone-400">Weight: {item.weight} kg</p>
+                        <p className="text-stone-600 dark:text-stone-400">Quantity: {item.weight} {item.quantityUnit || 'kg'}</p>
                         <div className="mt-4 flex gap-2">
                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Completed</span>
                         </div>

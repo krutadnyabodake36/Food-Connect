@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { HotelDonation, Volunteer } from '../types';
-import supabase from '../lib/supabase';
+import { apiRequest, API_BASE_URL } from '../lib/api';
 import { sendLocalNotification } from '../lib/notifications';
+import { FALLBACK_HOTEL_LOCATION, getHotelLocation, setHotelLocation, setHotelName, hasHotelLocation } from '../lib/hotelLocation';
+import { useAuth } from './AuthContext';
 
 /*  ── Donation lifecycle ──
  *   pending    →  Hotel posted, shows on volunteer map
@@ -13,16 +15,45 @@ import { sendLocalNotification } from '../lib/notifications';
 interface DonationContextType {
   donations: HotelDonation[];
   loading: boolean;
-  // Hotel actions
   addDonation: (data: Partial<HotelDonation>, hotelId: string, hotelName: string) => void;
   editDonation: (id: string, data: Partial<HotelDonation>) => void;
   acceptRequest: (donationId: string) => void;
   rejectRequest: (donationId: string) => void;
   markCompleted: (donationId: string) => void;
-  verifyAndComplete: (donationId: string, code: string) => boolean;
-  // Volunteer actions
+  verifyAndComplete: (donationId: string, code: string) => Promise<boolean>;
   requestPickup: (donationId: string, volunteerInfo: Volunteer) => void;
 }
+
+type ApiVolunteer = Volunteer & { phone?: string };
+type ApiDonation = {
+  id: string;
+  hotelId: string;
+  hotelName?: string;
+  hotelAddress?: string;
+  hotelType?: string;
+  contactName?: string;
+  hotelLat?: number;
+  hotelLng?: number;
+  title: string;
+  description?: string;
+  isVeg?: boolean;
+  prepTime?: string;
+  weight: number;
+  quantityUnit?: 'kg' | 'plates' | 'pieces' | 'servings';
+  tags: string[];
+  status: 'pending' | 'assigned' | 'completed';
+  timestamp: string;
+  createdAt?: string;
+  pickupWindow: string;
+  imageUrl?: string;
+  isUrgent?: boolean;
+  pickupCode?: string;
+  rating?: number;
+  review?: string;
+  activeRequest?: ApiVolunteer;
+  assignedVolunteer?: ApiVolunteer;
+  tracking?: HotelDonation['tracking'];
+};
 
 const DonationContext = createContext<DonationContextType | undefined>(undefined);
 
@@ -32,124 +63,223 @@ export const useDonations = () => {
   return context;
 };
 
-// Map coordinates per hotel (Dadar, Mumbai area)
-export const HOTEL_LOCATIONS: Record<string, { lat: number; lng: number }> = {
-  '11111111-1111-1111-1111-111111111111': { lat: 19.0178, lng: 72.8478 },
-};
-
-// Hotel name cache
-const HOTEL_NAMES: Record<string, string> = {
-  '11111111-1111-1111-1111-111111111111': 'Demo Hotel',
-};
-
-export const getHotelName = (donation: HotelDonation): string =>
-  HOTEL_NAMES[donation.hotelId] || 'Unknown Hotel';
-
-export const getHotelLocation = (hotelId: string): { lat: number; lng: number } =>
-  HOTEL_LOCATIONS[hotelId] || { lat: 19.018, lng: 72.848 };
-
-// ── Supabase helpers ──
-
-const isSupabaseConfigured = (): boolean => {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  return !!(url && !url.includes('placeholder'));
-};
-
-// Convert Supabase row to HotelDonation
-const rowToDonation = (row: any): HotelDonation => ({
-  id: row.id,
-  hotelId: row.hotel_id,
-  title: row.title,
-  weight: row.weight,
-  tags: row.tags || [],
-  status: row.status,
-  timestamp: new Date(row.created_at).toLocaleString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }),
-  pickupWindow: row.pickup_window || 'Anytime',
-  imageUrl: row.image_url,
-  isUrgent: row.is_urgent,
-  pickupCode: row.pickup_code,
-  // These will be populated from pickup_requests
-  activeRequest: row._activeRequest,
-  assignedVolunteer: row._assignedVolunteer,
-  tracking: row._tracking,
-});
-
-// ── STORAGE KEY ──
 const STORAGE_KEY = 'foodconnect_donations';
-
-// Seed data for localStorage fallback — ALL belong to the Demo Hotel
-const DEMO_HOTEL_ID = '11111111-1111-1111-1111-111111111111';
-
-const SEED_DONATIONS: HotelDonation[] = [
-  { id: 'seed-1', hotelId: DEMO_HOTEL_ID, title: 'Veg Biryani & Curry', weight: 6, tags: ['Veg', 'Hot'], status: 'pending', timestamp: '25 min ago', pickupWindow: '10:30 PM', imageUrl: 'https://images.unsplash.com/photo-1633945274405-b6c8069047b0?w=800&auto=format&fit=crop&q=60', isUrgent: false },
-  { id: 'seed-2', hotelId: 'hotel-oceanCatch', title: 'Grilled Fish Surplus', weight: 3, tags: ['Non-Veg', 'Fragile'], status: 'pending', timestamp: '40 min ago', pickupWindow: '11:00 PM', imageUrl: 'https://images.unsplash.com/photo-1519708227418-c8fd9a3a2750?w=800&auto=format&fit=crop&q=60', isUrgent: false },
-  { id: 'seed-3', hotelId: 'hotel-spiceRoute', title: 'Assorted Breads & Dal', weight: 12, tags: ['Veg', 'Bulk'], status: 'pending', timestamp: '1 hour ago', pickupWindow: '11:45 PM', imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=800&auto=format&fit=crop&q=60', isUrgent: false },
-  { id: 'seed-4', hotelId: 'hotel-cafeDelight', title: 'Pastries & Sandwiches', weight: 4, tags: ['Bakery', 'Cool'], status: 'pending', timestamp: '2 hours ago', pickupWindow: '08:00 AM', imageUrl: 'https://images.unsplash.com/photo-1550617931-e17a7b70dce2?w=800&auto=format&fit=crop&q=60', isUrgent: false },
-];
-
-// Extra hotel maps for seed data
-HOTEL_NAMES['hotel-oceanCatch'] = 'Ocean Catch';
-HOTEL_NAMES['hotel-spiceRoute'] = 'Spice Route Banquet';
-HOTEL_NAMES['hotel-cafeDelight'] = 'Café Delight';
-HOTEL_LOCATIONS['hotel-oceanCatch'] = { lat: 19.0210, lng: 72.8420 };
-HOTEL_LOCATIONS['hotel-spiceRoute'] = { lat: 19.0120, lng: 72.8550 };
-HOTEL_LOCATIONS['hotel-cafeDelight'] = { lat: 19.0250, lng: 72.8380 };
-
-// ── localStorage helpers (shared between tabs) ──
+const STORAGE_VERSION_KEY = 'foodconnect_donations_version';
+const STORAGE_VERSION = 'city-realistic-v1';
+const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000).toISOString();
 
 function readFromStorage(): HotelDonation[] {
   try {
+    const version = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (version !== STORAGE_VERSION) {
+      return [];
+    }
+
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return SEED_DONATIONS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return [];
 }
+
 
 function writeToStorage(donations: HotelDonation[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(donations));
+  localStorage.setItem(STORAGE_VERSION_KEY, STORAGE_VERSION);
 }
 
+const toVolunteer = (value: ApiVolunteer | undefined): Volunteer | undefined => (value ? value : undefined);
+
+const mapDonation = (row: ApiDonation): HotelDonation => {
+  setHotelName(row.hotelId, row.hotelName);
+  if (typeof row.hotelLat === 'number' && typeof row.hotelLng === 'number') {
+    setHotelLocation(row.hotelId, row.hotelLat, row.hotelLng);
+  } else if (!hasHotelLocation(row.hotelId)) {
+    getHotelLocation(row.hotelId);
+  }
+
+  return {
+    id: row.id,
+    hotelId: row.hotelId,
+    hotelName: row.hotelName,
+    hotelAddress: row.hotelAddress,
+    hotelType: row.hotelType,
+    contactName: row.contactName,
+    title: row.title,
+    description: row.description,
+    isVeg: row.isVeg,
+    prepTime: row.prepTime,
+    weight: row.weight,
+    quantityUnit: row.quantityUnit || 'kg',
+    tags: row.tags || [],
+    status: row.status,
+    timestamp: row.timestamp,
+    createdAt: row.createdAt,
+    pickupWindow: row.pickupWindow || 'Anytime',
+    imageUrl: row.imageUrl,
+    isUrgent: row.isUrgent,
+    pickupCode: row.pickupCode,
+    rating: row.rating,
+    review: row.review,
+    activeRequest: toVolunteer(row.activeRequest),
+    assignedVolunteer: toVolunteer(row.assignedVolunteer),
+    tracking: row.tracking,
+  };
+};
+
+const mapApiDonations = (rows: ApiDonation[]): HotelDonation[] => rows.map(mapDonation);
+
+// Helper to detect if a donation has changed
+const hasChanged = (oldDonation: HotelDonation | undefined, newDonation: HotelDonation): boolean => {
+  if (!oldDonation) return true; // New donation
+  return JSON.stringify(oldDonation) !== JSON.stringify(newDonation);
+};
+
+const tryGetCurrentPosition = (): Promise<{ lat: number; lng: number } | null> => {
+  if (!navigator.geolocation) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => resolve(null),
+      { timeout: 5000, enableHighAccuracy: true, maximumAge: 30000 }
+    );
+  });
+};
 
 export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [donations, setDonations] = useState<HotelDonation[]>([]);
   const [loading, setLoading] = useState(true);
-  const useSupabase = useRef(isSupabaseConfigured());
+  const useBackend = useRef(true);
   const skipNextPersist = useRef(false);
+  const { user } = useAuth();
 
-  // ── Initial load ──
-  useEffect(() => {
-    if (useSupabase.current) {
-      loadFromSupabase();
-      subscribeToRealtime();
-    } else {
-      const data = readFromStorage();
-      setDonations(data);
+  // Create demo donations for demo volunteer users
+  const ensureDemoDonations = useCallback(() => {
+    if (!user || !user.id.startsWith('demo-volunteer')) return;
+
+    const stored = readFromStorage();
+    // Only create demo donations if there are none yet
+    if (stored.length === 0) {
+      const demoDonations: HotelDonation[] = [
+        {
+          id: 'demo-donation-1',
+          hotelId: 'demo-hotel-001',
+          hotelName: 'Hotel Paradise',
+          hotelAddress: '123 Premium St, Mumbai',
+          title: 'Veg Biryani & Curry',
+          description: 'Freshly prepared vegetarian biryani with special curry',
+          isVeg: true,
+          weight: 15,
+          quantityUnit: 'kg',
+          tags: ['Veg', 'Rice', 'Curry', 'Hot'],
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+          pickupWindow: '14:00 - 16:00',
+          imageUrl: 'https://images.unsplash.com/photo-1589985645852-5c0265aace00?auto=format&fit=crop&q=80&w=400',
+          isUrgent: true,
+        },
+        {
+          id: 'demo-donation-2',
+          hotelId: 'demo-hotel-001',
+          hotelName: 'Hotel Paradise',
+          hotelAddress: '123 Premium St, Mumbai',
+          title: 'Butter Chicken & Naan',
+          description: 'Non-veg butter chicken with fresh naan bread',
+          isVeg: false,
+          weight: 12,
+          quantityUnit: 'kg',
+          tags: ['Non-Veg', 'Chicken', 'Bread'],
+          status: 'pending',
+          timestamp: new Date(Date.now() - 5 * 60000).toISOString(),
+          createdAt: new Date(Date.now() - 5 * 60000).toISOString(),
+          pickupWindow: '14:00 - 16:00',
+          imageUrl: 'https://images.unsplash.com/photo-1555939594-58d7cb561404?auto=format&fit=crop&q=80&w=400',
+        },
+        {
+          id: 'demo-donation-3',
+          hotelId: 'demo-hotel-001',
+          hotelName: 'Hotel Paradise',
+          hotelAddress: '123 Premium St, Mumbai',
+          title: 'Fresh Desserts & Pastries',
+          description: 'Assorted sweets and chocolate pastries',
+          isVeg: true,
+          weight: 8,
+          quantityUnit: 'kg',
+          tags: ['Bakery', 'Sweets', 'Veg'],
+          status: 'pending',
+          timestamp: new Date(Date.now() - 10 * 60000).toISOString(),
+          createdAt: new Date(Date.now() - 10 * 60000).toISOString(),
+          pickupWindow: '16:00 - 18:00',
+          imageUrl: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&q=80&w=400',
+        },
+      ];
+
+      writeToStorage(demoDonations);
+      setDonations(demoDonations);
       setLoading(false);
     }
+  }, [user]);
+
+  const loadFromBackend = useCallback(async () => {
+    const rows = await apiRequest<ApiDonation[]>('/donations');
+    const mapped = mapApiDonations(rows);
+    setDonations(mapped);
+    setLoading(false);
+    return mapped;
   }, []);
 
-  // ── Persist to localStorage on every change (localStorage mode) ──
-  useEffect(() => {
-    if (!useSupabase.current && donations.length > 0) {
-      if (skipNextPersist.current) {
-        skipNextPersist.current = false;
-        return;
-      }
-      writeToStorage(donations);
-    }
-  }, [donations]);
+  const loadFromStorage = useCallback(() => {
+    const data = readFromStorage();
+    setDonations(data);
+    setLoading(false);
+    return data;
+  }, []);
 
-  // ── Cross-tab sync: listen for localStorage changes from other tabs ──
   useEffect(() => {
-    if (useSupabase.current) return;
+    if (!user) return;
+
+    // For demo users, ensure we have demo donations
+    if (user.id.startsWith('demo-volunteer')) {
+      ensureDemoDonations();
+      return;
+    }
+
+    if (useBackend.current) {
+      loadFromBackend().catch((err) => {
+        console.error('Backend load error, falling back to localStorage:', err);
+        useBackend.current = false;
+        loadFromStorage();
+      });
+    } else {
+      loadFromStorage();
+    }
+  }, [loadFromBackend, loadFromStorage, user, ensureDemoDonations]);
+
+  useEffect(() => {
+    if (useBackend.current) return;
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === STORAGE_KEY && e.newValue) {
         try {
           const updated = JSON.parse(e.newValue);
-          skipNextPersist.current = true; // Don't re-persist what we just received
+          skipNextPersist.current = true;
           setDonations(updated);
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
     };
 
@@ -157,290 +287,479 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // ── Supabase loaders ──
-
-  const loadFromSupabase = async () => {
-    try {
-      // Load donations
-      const { data: donationRows, error } = await supabase
-        .from('donations')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-
-      // Load pending pickup requests
-      const { data: requestRows } = await supabase
-        .from('pickup_requests')
-        .select('*, volunteer:profiles(*)')
-        .eq('status', 'pending');
-
-      // Load accepted pickup requests (assigned volunteers)
-      const { data: acceptedRows } = await supabase
-        .from('pickup_requests')
-        .select('*, volunteer:profiles(*)')
-        .eq('status', 'accepted');
-
-      // Load hotel profiles for names + locations
-      const { data: hotels } = await supabase
-        .from('profiles')
-        .select('id, hotel_name, lat, lng')
-        .eq('role', 'hotel');
-
-      // Cache hotel info
-      hotels?.forEach(h => {
-        if (h.hotel_name) HOTEL_NAMES[h.id] = h.hotel_name;
-        if (h.lat && h.lng) HOTEL_LOCATIONS[h.id] = { lat: h.lat, lng: h.lng };
-      });
-
-      // Map requests to donations
-      const mapped = (donationRows || []).map(row => {
-        const pendingReq = requestRows?.find(r => r.donation_id === row.id);
-        const acceptedReq = acceptedRows?.find(r => r.donation_id === row.id);
-
-        const activeRequest = pendingReq ? {
-          id: pendingReq.volunteer?.id || pendingReq.volunteer_id,
-          name: pendingReq.volunteer?.name || 'Volunteer',
-          rating: 4.9,
-          distanceKm: parseFloat((Math.random() * 3 + 0.5).toFixed(1)),
-          etaMinutes: Math.round(Math.random() * 15 + 5),
-          vehicle: pendingReq.volunteer?.vehicle || 'Bicycle',
-          phone: pendingReq.volunteer?.phone || '',
-        } as Volunteer : undefined;
-
-        const assignedVolunteer = acceptedReq ? {
-          id: acceptedReq.volunteer?.id || acceptedReq.volunteer_id,
-          name: acceptedReq.volunteer?.name || 'Volunteer',
-          rating: 4.9,
-          distanceKm: parseFloat((Math.random() * 3 + 0.5).toFixed(1)),
-          etaMinutes: Math.round(Math.random() * 15 + 5),
-          vehicle: acceptedReq.volunteer?.vehicle || 'Bicycle',
-          phone: acceptedReq.volunteer?.phone || '',
-        } as Volunteer : undefined;
-
-        const hotelLoc = getHotelLocation(row.hotel_id);
-        const tracking = row.status === 'assigned' && assignedVolunteer ? {
-          active: true,
-          currentLocation: { lat: hotelLoc.lat + 0.003, lng: hotelLoc.lng + 0.002, address: 'Volunteer Location' },
-          destination: { lat: hotelLoc.lat, lng: hotelLoc.lng, address: HOTEL_NAMES[row.hotel_id] || 'Hotel' },
-          progress: 35,
-          status: 'on_route' as const,
-          lastUpdated: 'Live',
-        } : undefined;
-
-        return {
-          ...rowToDonation(row),
-          activeRequest,
-          assignedVolunteer,
-          tracking,
-        };
-      });
-
-      setDonations(mapped);
-    } catch (err) {
-      console.error('Supabase load error, falling back to localStorage:', err);
-      useSupabase.current = false;
-      const data = readFromStorage();
-      setDonations(data);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const subscribeToRealtime = () => {
-    // Subscribe to donations changes
-    supabase
-      .channel('donations-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'donations' }, () => {
-        loadFromSupabase(); // Reload all data on any change
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'pickup_requests' }, () => {
-        loadFromSupabase();
-      })
-      .subscribe();
-  };
-
-  // ── Tracking simulation ──
   useEffect(() => {
-    const interval = setInterval(() => {
-      setDonations(prev => {
-        const hasTracking = prev.some(d => d.status === 'assigned' && d.tracking?.active);
-        if (!hasTracking) return prev; // Skip update if nothing to track
-        return prev.map(d => {
-          if (d.status === 'assigned' && d.tracking && d.tracking.active) {
-            let newProgress = d.tracking.progress + 1;
-            let newStatus = d.tracking.status;
-            if (newProgress >= 100) { newProgress = 100; newStatus = 'arrived'; }
-            return { ...d, tracking: { ...d.tracking, progress: newProgress, status: newStatus, lastUpdated: 'Live' } };
-          }
-          return d;
-        });
-      });
-    }, 3000);
-    return () => clearInterval(interval);
-  }, []);
+    if (useBackend.current || donations.length === 0) return;
+    if (skipNextPersist.current) {
+      skipNextPersist.current = false;
+      return;
+    }
+    writeToStorage(donations);
+  }, [donations]);
 
-  // ── Hotel actions ──
+  // Auto-refresh donations for live sync (only when data actually changes)
+  useEffect(() => {
+    if (!user) return;
+
+    let intervalId: NodeJS.Timeout;
+    let isVisible = true;
+    let previousIds = new Set(donations.map(d => d.id));
+    let previousHash = JSON.stringify(donations.map(d => ({
+      id: d.id,
+      status: d.status,
+      weight: d.weight,
+      quantityUnit: d.quantityUnit,  // NEW: include quantityUnit
+      claimedQuantity: d.claimedQuantity,  // NEW: include claimed quantity
+      activeRequest: d.activeRequest?.id,
+      assignedVolunteer: d.assignedVolunteer?.id,
+      pickupCode: d.pickupCode,
+      updatedAt: d.timestamp,
+    })));
+
+    const handleVisibilityChange = () => {
+      isVisible = !document.hidden;
+      // Refresh immediately when user returns to tab
+      if (isVisible && useBackend.current) {
+        loadFromBackend().catch(() => {
+          useBackend.current = false;
+          loadFromStorage();
+        });
+      }
+    };
+
+    // Handle cross-tab/window storage changes (for live updates when another window posts donations)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          const updated = JSON.parse(e.newValue);
+          if (Array.isArray(updated)) {
+            console.log('[Donations] 📡 Live update from another window - refreshing donations');
+            skipNextPersist.current = true; // Don't persist back to localStorage (prevent loops)
+            setDonations(updated);
+            
+            // Send notification for new donations
+            const newIds = new Set(updated.map((d: HotelDonation) => d.id));
+            const oldIds = new Set(donations.map(d => d.id));
+            
+            const newDonations = updated.filter((d: HotelDonation) => !oldIds.has(d.id));
+            if (newDonations.length > 0) {
+              newDonations.forEach((d: HotelDonation) => {
+                console.log(`[Donations] 🔔 New donation detected from live update: ${d.title}`);
+                sendLocalNotification('new_donation', '🍲 New Donation Posted', `${d.title} (${d.weight} ${d.quantityUnit || 'kg'}) is available for pickup from ${d.hotelName}!`, d.id);
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[Donations] Failed to process storage update:', err);
+        }
+      }
+    };
+
+    // Handle custom in-window donations update event
+    const handleCustomDonationsUpdate = (e: any) => {
+      const donations = e.detail?.donations;
+      if (donations && Array.isArray(donations)) {
+        console.log('[Donations] 🔄 Custom event update received - refreshing donations');
+        setDonations(donations);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('foodconnect:donations-updated', handleCustomDonationsUpdate);
+
+    // Set up polling interval when component mounts
+    if (useBackend.current) {
+      intervalId = setInterval(async () => {
+        if (!document.hidden) {
+          try {
+            const rows = await apiRequest<ApiDonation[]>('/donations');
+            const mapped = mapApiDonations(rows);
+            const currentHash = JSON.stringify(mapped.map(d => ({
+              id: d.id,
+              status: d.status,
+              weight: d.weight,
+              quantityUnit: d.quantityUnit,  // NEW: include quantityUnit
+              claimedQuantity: d.claimedQuantity,  // NEW: include claimed quantity
+              activeRequest: d.activeRequest?.id,
+              assignedVolunteer: d.assignedVolunteer?.id,
+              pickupCode: d.pickupCode,
+              updatedAt: d.timestamp,
+            })));
+            
+            // Only update state if there are actual changes
+            if (currentHash !== previousHash) {
+              // Find new donations for notifications
+              const newDonations: HotelDonation[] = [];
+              const newIds = new Set(mapped.map(d => d.id));
+              
+              mapped.forEach(newDonation => {
+                if (!previousIds.has(newDonation.id)) {
+                  newDonations.push(newDonation);
+                }
+              });
+              
+              setDonations(mapped);
+              previousHash = currentHash;
+              previousIds = newIds;
+              
+              // Send notifications only for brand new donations
+              if (newDonations.length > 0) {
+                newDonations.forEach(d => {
+                  sendLocalNotification('new_donation', '🍲 New Donation Posted', `${d.title} (${d.weight} ${d.quantityUnit || 'kg'}) is available for pickup from ${d.hotelName}!`, d.id);
+                });
+              }
+            }
+          } catch (err) {
+            console.warn('Auto-refresh failed:', err);
+          }
+        }
+      }, 3000); // Poll every 3 seconds for fast real-time sync
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('foodconnect:donations-updated', handleCustomDonationsUpdate);
+    };
+  }, [loadFromBackend, loadFromStorage, user]);
+
+  // 🔴 NEW: SSE Real-time listener for instant donation updates
+  useEffect(() => {
+    if (!user || !useBackend.current) return;
+
+    let eventSource: EventSource | null = null;
+
+    const setupSSE = () => {
+      try {
+        eventSource = new EventSource(`${API_BASE_URL}/donations/events`);
+        console.log('[Donations] 🔴 SSE Connection established');
+
+        eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('[Donations] 📡 SSE Event received:', data);
+
+            if (data.type === 'donation_updated') {
+              console.log(`[Donations] 🔄 Real-time update for donation ${data.data.donationId}: ${data.data.type}`);
+              // Trigger immediate refresh of donations
+              loadFromBackend().catch((err) => {
+                console.error('[Donations] SSE refresh failed:', err);
+              });
+            }
+          } catch (parseErr) {
+            console.warn('[Donations] Failed to parse SSE data:', parseErr);
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.error('[Donations] SSE connection error:', err);
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          // Attempt reconnection after 3 seconds
+          setTimeout(() => {
+            console.log('[Donations] 🔁 Attempting SSE reconnection...');
+            setupSSE();
+          }, 3000);
+        };
+      } catch (err) {
+        console.error('[Donations] Failed to setup SSE:', err);
+      }
+    };
+
+    setupSSE();
+
+    return () => {
+      if (eventSource) {
+        console.log('[Donations] 🔴 SSE Connection closed');
+        eventSource.close();
+      }
+    };
+  }, [user, loadFromBackend]);
+
+  const refreshDonations = useCallback(async () => {
+    if (useBackend.current) {
+      try {
+        await loadFromBackend();
+        return;
+      } catch (err) {
+        console.error('Reload from backend failed, using local data:', err);
+        useBackend.current = false;
+      }
+    }
+    loadFromStorage();
+  }, [loadFromBackend, loadFromStorage]);
 
   const addDonation = useCallback(async (data: Partial<HotelDonation>, hotelId: string, hotelName: string) => {
-    HOTEL_NAMES[hotelId] = hotelName;
-    if (!HOTEL_LOCATIONS[hotelId]) {
-      HOTEL_LOCATIONS[hotelId] = { lat: 19.015 + Math.random() * 0.015, lng: 72.835 + Math.random() * 0.02 };
+    setHotelName(hotelId, hotelName);
+    if (!hasHotelLocation(hotelId)) getHotelLocation(hotelId);
+
+    if (useBackend.current) {
+      try {
+        const numericHotelId = Number(hotelId);
+        const currentHotelLoc = getHotelLocation(hotelId);
+        const needsRealLocation = !currentHotelLoc
+          || (currentHotelLoc.lat === FALLBACK_HOTEL_LOCATION.lat && currentHotelLoc.lng === FALLBACK_HOTEL_LOCATION.lng);
+
+        if (Number.isFinite(numericHotelId) && needsRealLocation) {
+          const currentPos = await tryGetCurrentPosition();
+          if (currentPos) {
+            await apiRequest(`/hotels/${numericHotelId}/location?lat=${currentPos.lat}&lng=${currentPos.lng}`, {
+              method: 'POST',
+            });
+            setHotelLocation(hotelId, currentPos.lat, currentPos.lng);
+          }
+        }
+
+        await apiRequest('/donations', {
+          method: 'POST',
+          body: JSON.stringify({
+            hotelId: Number(hotelId),
+            title: data.title || 'Untitled Donation',
+            description: data.description,
+            isVeg: data.isVeg,
+            prepTime: data.prepTime,
+            weight: data.weight || 0,
+            quantityUnit: (data as any).quantityUnit || 'kg',
+            tags: (data.tags || []).map((tag) => String(tag).toLowerCase()),
+            pickupWindow: data.pickupWindow || 'Anytime',
+            expiryDate: data.expiryDate,
+            imageUrl: data.imageUrl,
+            isUrgent: data.isUrgent || false,
+          }),
+        });
+        await refreshDonations();
+      } catch (err) {
+        console.error('Add donation error:', err);
+        sendLocalNotification('request_rejected', 'Create failed', 'Unable to create donation. Please check fields and try again.');
+        return;
+      }
     }
 
-    if (useSupabase.current) {
-      const { error } = await supabase.from('donations').insert({
-        hotel_id: hotelId,
-        title: data.title || 'Untitled Donation',
-        weight: data.weight || 0,
-        tags: data.tags || [],
-        pickup_window: data.pickupWindow || 'Anytime',
-        image_url: data.imageUrl,
-        is_urgent: data.isUrgent || false,
-      });
-      if (error) console.error('Add donation error:', error);
-      // Realtime will trigger reload
-    } else {
+    if (!useBackend.current) {
       const newId = 'don-' + Date.now();
       const newDonation: HotelDonation = {
-        id: newId, hotelId,
-        title: data.title || 'Untitled', weight: data.weight || 0,
-        tags: data.tags || [], status: 'pending', timestamp: 'Just now',
-        pickupWindow: data.pickupWindow || 'Anytime', imageUrl: data.imageUrl, isUrgent: data.isUrgent,
+        id: newId,
+        hotelId,
+        hotelName,
+        title: data.title || 'Untitled',
+        weight: data.weight || 0,
+        tags: data.tags || [],
+        status: 'pending',
+        timestamp: 'Just now',
+        createdAt: new Date().toISOString(),
+        pickupWindow: data.pickupWindow || 'Anytime',
+        imageUrl: data.imageUrl,
+        isUrgent: data.isUrgent,
       } as HotelDonation;
       setDonations(prev => {
         const updated = [newDonation, ...prev];
-        writeToStorage(updated); // Immediately persist so other tabs see it
+        writeToStorage(updated);
+        // Dispatch custom event for immediate in-window updates
+        window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
         return updated;
       });
     }
+
     sendLocalNotification('new_donation', '🍲 New Donation Posted', `${data.title || 'A donation'} (${data.weight || 0}kg) is now available for pickup.`, data.title);
-  }, []);
+  }, [refreshDonations]);
 
   const editDonation = useCallback(async (id: string, data: Partial<HotelDonation>) => {
-    if (useSupabase.current) {
-      const updates: any = {};
-      if (data.title) updates.title = data.title;
-      if (data.weight !== undefined) updates.weight = data.weight;
-      if (data.tags) updates.tags = data.tags;
-      if (data.pickupWindow) updates.pickup_window = data.pickupWindow;
-      if (data.imageUrl) updates.image_url = data.imageUrl;
-      if (data.isUrgent !== undefined) updates.is_urgent = data.isUrgent;
-      if (data.rating !== undefined) updates.rating = data.rating;
-      updates.updated_at = new Date().toISOString();
-      await supabase.from('donations').update(updates).eq('id', id);
-    } else {
-      setDonations(prev => {
-        const updated = prev.map(d => d.id === id ? { ...d, ...data } : d);
-        writeToStorage(updated);
-        return updated;
-      });
+    if (useBackend.current) {
+      try {
+        await apiRequest(`/donations/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            title: data.title,
+            description: data.description,
+            isVeg: data.isVeg,
+            prepTime: data.prepTime,
+            weight: data.weight,
+            quantityUnit: (data as any).quantityUnit,
+            tags: data.tags,
+            expiryDate: data.expiryDate,
+            pickupWindow: data.pickupWindow,
+            imageUrl: data.imageUrl,
+            isUrgent: data.isUrgent,
+            rating: data.rating,
+            review: data.review,
+          }),
+        });
+        await refreshDonations();
+        return;
+      } catch (err) {
+        console.error('Edit donation error:', err);
+        sendLocalNotification('request_rejected', 'Update failed', 'Unable to update donation right now.');
+        return;
+      }
     }
-  }, []);
+
+    setDonations(prev => {
+      const updated = prev.map(d => (d.id === id ? { ...d, ...data } : d));
+      writeToStorage(updated);
+      // Dispatch custom event for immediate in-window updates
+      window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
+      return updated;
+    });
+  }, [refreshDonations]);
 
   const acceptRequest = useCallback(async (donationId: string) => {
-    const pickupCode = String(Math.floor(1000 + Math.random() * 9000));
-
-    if (useSupabase.current) {
-      // Get the pending request
-      const { data: requests } = await supabase
-        .from('pickup_requests')
-        .select('*')
-        .eq('donation_id', donationId)
-        .eq('status', 'pending')
-        .limit(1);
-
-      if (requests && requests.length > 0) {
-        // Accept the request
-        await supabase.from('pickup_requests').update({ status: 'accepted' }).eq('id', requests[0].id);
-        // Update donation
-        await supabase.from('donations').update({
-          status: 'assigned',
-          volunteer_id: requests[0].volunteer_id,
-          pickup_code: pickupCode,
-          updated_at: new Date().toISOString(),
-        }).eq('id', donationId);
+    if (useBackend.current) {
+      try {
+        await apiRequest(`/donations/${donationId}/accept`, { method: 'POST' });
+        await refreshDonations();
+      } catch (err) {
+        console.error('Accept request error:', err);
+        sendLocalNotification('request_rejected', 'Accept failed', 'Could not accept this request. Please retry.');
+        return;
       }
-    } else {
+    }
+
+    if (!useBackend.current) {
+      const pickupCode = String(Math.floor(1000 + Math.random() * 9000));
       setDonations(prev => {
         const updated = prev.map(d => {
           if (d.id === donationId && d.activeRequest) {
             const hotelLoc = getHotelLocation(d.hotelId);
             return {
-              ...d, status: 'assigned' as const, assignedVolunteer: d.activeRequest, activeRequest: undefined, pickupCode,
+              ...d,
+              status: 'assigned' as const,
+              assignedVolunteer: d.activeRequest,
+              activeRequest: undefined,
+              pickupCode,
               tracking: {
                 active: true,
-                currentLocation: { lat: hotelLoc.lat + (Math.random() * 0.01 - 0.005), lng: hotelLoc.lng + (Math.random() * 0.01 - 0.005), address: 'Volunteer Location' },
-                destination: { lat: hotelLoc.lat, lng: hotelLoc.lng, address: HOTEL_NAMES[d.hotelId] || 'Hotel' },
-                progress: 5, status: 'on_route' as const, lastUpdated: 'Just now',
+                currentLocation: {
+                  lat: hotelLoc.lat + (Math.random() * 0.01 - 0.005),
+                  lng: hotelLoc.lng + (Math.random() * 0.01 - 0.005),
+                  address: 'Volunteer Location',
+                },
+                destination: { lat: hotelLoc.lat, lng: hotelLoc.lng, address: d.hotelName || 'Hotel' },
+                progress: 5,
+                status: 'on_route' as const,
+                lastUpdated: 'Just now',
               },
             };
           }
           return d;
         });
         writeToStorage(updated);
+        // Dispatch custom event for immediate in-window updates
+        window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
         return updated;
       });
     }
+
     const donation = donations.find(d => d.id === donationId);
     sendLocalNotification('request_accepted', '✅ Request Accepted!', `Your pickup request for "${donation?.title || 'a donation'}" has been accepted. Head to the hotel now!`, donationId);
-  }, [donations]);
+  }, [donations, refreshDonations]);
 
   const rejectRequest = useCallback(async (donationId: string) => {
-    if (useSupabase.current) {
-      await supabase.from('pickup_requests').update({ status: 'rejected' }).eq('donation_id', donationId).eq('status', 'pending');
-    } else {
+    if (useBackend.current) {
+      try {
+        await apiRequest(`/donations/${donationId}/reject`, { method: 'POST' });
+        await refreshDonations();
+      } catch (err) {
+        console.error('Reject request error:', err);
+        sendLocalNotification('request_rejected', 'Decline failed', 'Could not decline this request. Please retry.');
+        return;
+      }
+    }
+
+    if (!useBackend.current) {
       setDonations(prev => {
-        const updated = prev.map(d => d.id === donationId ? { ...d, activeRequest: undefined } : d);
+        const updated = prev.map(d => (d.id === donationId ? { ...d, activeRequest: undefined } : d));
         writeToStorage(updated);
+        // Dispatch custom event for immediate in-window updates
+        window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
         return updated;
       });
     }
-    sendLocalNotification('request_rejected', '❌ Request Declined', `Your pickup request has been declined. Try other available donations.`, donationId);
-  }, []);
+    sendLocalNotification('request_rejected', '❌ Request Declined', 'Your pickup request has been declined. Try other available donations.', donationId);
+  }, [refreshDonations]);
 
   const markCompleted = useCallback(async (donationId: string) => {
-    if (useSupabase.current) {
-      await supabase.from('donations').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', donationId);
-    } else {
-      setDonations(prev => {
-        const updated = prev.map(d => d.id === donationId ? {
-          ...d, status: 'completed' as const, tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
-        } : d);
-        writeToStorage(updated);
-        return updated;
-      });
+    if (useBackend.current) {
+      try {
+        await apiRequest(`/donations/${donationId}/complete`, { method: 'POST' });
+        await refreshDonations();
+        return;
+      } catch (err) {
+        console.error('Mark completed error:', err);
+        sendLocalNotification('request_rejected', 'Completion failed', 'Could not mark this donation as complete.');
+        return;
+      }
     }
-  }, []);
 
-  const verifyAndComplete = useCallback((donationId: string, code: string): boolean => {
-    const donation = donations.find(d => d.id === donationId);
-    if (!donation?.pickupCode || donation.pickupCode !== code) return false;
-
-    if (useSupabase.current) {
-      supabase.from('donations').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', donationId);
-    }
     setDonations(prev => {
-      const updated = prev.map(d => d.id === donationId ? {
-        ...d, status: 'completed' as const, tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
-      } : d);
+      const updated = prev.map(d => (d.id === donationId ? {
+        ...d,
+        status: 'completed' as const,
+        tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
+      } : d));
+      writeToStorage(updated);
+      // Dispatch custom event for immediate in-window updates
+      window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
+      return updated;
+    });
+  }, [refreshDonations]);
+
+  const verifyAndComplete = useCallback(async (donationId: string, code: string): Promise<boolean> => {
+    const donation = donations.find(d => d.id === donationId);
+    if (!useBackend.current && (!donation?.pickupCode || donation.pickupCode !== code)) return false;
+
+    if (useBackend.current) {
+      try {
+        const result = await apiRequest<{ ok?: boolean; status?: string; donation?: HotelDonation }>(`/donations/${donationId}/verify`, {
+          method: 'POST',
+          body: JSON.stringify({ code }),
+        });
+        if (!(result.ok || result.status === 'delivered')) return false;
+        await refreshDonations();
+        sendLocalNotification('pickup_completed', '🎉 Pickup Complete!', `Donation "${donation?.title || ''}" has been successfully verified and completed.`, donationId);
+        return true;
+      } catch (err) {
+        console.error('Verify error:', err);
+        sendLocalNotification('request_rejected', 'Verification failed', 'Invalid or expired verification code.');
+        return false;
+      }
+    }
+
+    setDonations(prev => {
+      const updated = prev.map(d => (d.id === donationId ? {
+        ...d,
+        status: 'completed' as const,
+        tracking: d.tracking ? { ...d.tracking, active: false, status: 'arrived' as const, progress: 100 } : undefined,
+      } : d));
       writeToStorage(updated);
       return updated;
     });
     sendLocalNotification('pickup_completed', '🎉 Pickup Complete!', `Donation "${donation?.title || ''}" has been successfully verified and completed.`, donationId);
     return true;
-  }, [donations]);
-
-  // ── Volunteer actions ──
+  }, [donations, refreshDonations]);
 
   const requestPickup = useCallback(async (donationId: string, volunteerInfo: Volunteer) => {
-    if (useSupabase.current) {
-      await supabase.from('pickup_requests').insert({
-        donation_id: donationId,
-        volunteer_id: volunteerInfo.id,
-        status: 'pending',
-      });
-    } else {
+    if (useBackend.current) {
+      try {
+        await apiRequest(`/donations/${donationId}/request`, {
+          method: 'POST',
+          body: JSON.stringify({ volunteerInfo }),
+        });
+        await refreshDonations();
+      } catch (err: any) {
+        console.error('Request pickup error:', err);
+        const msg = err?.message?.toLowerCase() || '';
+        if (msg.includes('already') || msg.includes('claimed') || msg.includes('409')) {
+          sendLocalNotification('request_rejected', 'Already Requested', 'This donation already has a pending pickup request.');
+        } else {
+          sendLocalNotification('request_rejected', 'Request failed', 'Unable to request this pickup right now. Please try again.');
+        }
+        return;
+      }
+    }
+
+    if (!useBackend.current) {
       setDonations(prev => {
         const updated = prev.map(d => {
           if (d.id === donationId && d.status === 'pending' && !d.activeRequest) {
@@ -449,12 +768,15 @@ export const DonationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           return d;
         });
         writeToStorage(updated);
+        // Dispatch custom event for immediate in-window updates
+        window.dispatchEvent(new CustomEvent('foodconnect:donations-updated', { detail: { donations: updated } }));
         return updated;
       });
     }
+
     const donation = donations.find(d => d.id === donationId);
     sendLocalNotification('pickup_requested', '🙋 New Pickup Request', `${volunteerInfo.name} wants to pick up "${donation?.title || 'your donation'}". Review the request!`, donationId);
-  }, [donations]);
+  }, [donations, refreshDonations]);
 
   return (
     <DonationContext.Provider value={{ donations, loading, addDonation, editDonation, acceptRequest, rejectRequest, markCompleted, verifyAndComplete, requestPickup }}>

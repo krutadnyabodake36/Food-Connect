@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, User, ArrowRight, Leaf, Building2, Eye, EyeOff, CheckCircle2, Phone, Hash, Calendar, Car, MapPin, Smartphone, ShieldCheck } from 'lucide-react';
+import { Lock, User, ArrowRight, Leaf, Building2, Eye, EyeOff, CheckCircle2, Phone, MapPin } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole } from '../types';
+import { sendLocalNotification } from '../lib/notifications';
 
 const LoginPage: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -11,13 +12,8 @@ const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
-  const [authMethod, setAuthMethod] = useState<'credentials' | 'phone'>('credentials');
 
-  // Phone OTP state
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
-
-  const { login, register, sendPhoneOtp, verifyPhoneOtp } = useAuth();
+  const { login, register, demoLogin } = useAuth();
 
   // Common Form State
   const [password, setPassword] = useState('');
@@ -41,85 +37,47 @@ const LoginPage: React.FC = () => {
 
     try {
       if (isLogin) {
-        const identifier = role === 'hotel' ? hotelName : (phone || name);
+        const identifier = role === 'hotel' ? hotelName.trim() : phone.trim();
+        if (!identifier) {
+          throw new Error(role === 'hotel' ? 'Hotel name is required for login.' : 'Phone number is required for login.');
+        }
         await login(role, identifier, password);
+        sendLocalNotification('request_accepted', 'Welcome back', 'Login successful. Redirecting to your dashboard.');
+        
+        // Form reset happens automatically as user is redirected via App.tsx routing
       } else {
         if (role === 'hotel') {
+          if (!hotelName.trim() || !address.trim() || !managerNumber.trim() || !licenseNumber.trim()) {
+            throw new Error('Please fill all hotel basic details.');
+          }
           await register(role, { hotelName, address, managerNumber, licenseNumber }, password);
+          sendLocalNotification('new_donation', 'Account created', 'Hotel account created successfully.');
         } else {
+          if (!name.trim() || !phone.trim() || !age.trim() || !vehicle.trim()) {
+            throw new Error('Please fill all volunteer basic details.');
+          }
           await register(role, { name, phone, age: age ? parseInt(age) : undefined, vehicle }, password);
+          sendLocalNotification('new_donation', 'Account created', 'Volunteer account created successfully.');
         }
+        
+        // After successful registration, user is logged in and router will redirect
       }
     } catch (err: any) {
-      setError(err.message || 'Something went wrong.');
+      const message = err.message || 'An unexpected error occurred. Please try again.';
+      console.error('[LoginPage] Error:', message);
+      setError(message);
+      sendLocalNotification('request_rejected', 'Authentication failed', message);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    setError('');
-    const phoneNumber = role === 'hotel' ? managerNumber : phone;
-    if (!phoneNumber || phoneNumber.length < 10) {
-      setError('Please enter a valid phone number with country code (e.g. +91...)');
-      return;
-    }
-    setIsLoading(true);
-    try {
-      await sendPhoneOtp(phoneNumber, 'recaptcha-container');
-      setOtpSent(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to send OTP.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    const otp = otpDigits.join('');
-    if (otp.length !== 6) {
-      setError('Please enter the full 6-digit OTP.');
-      return;
-    }
-    setError('');
-    setIsLoading(true);
-    try {
-      const extraData = role === 'hotel'
-        ? { hotelName, address, licenseNumber }
-        : { name, age: age ? parseInt(age) : undefined, vehicle };
-      await verifyPhoneOtp(otp, role, extraData);
-    } catch (err: any) {
-      setError(err.message || 'Verification failed.');
-      setOtpDigits(['', '', '', '', '', '']);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
-    const newDigits = [...otpDigits];
-    newDigits[index] = value.slice(-1);
-    setOtpDigits(newDigits);
-    if (value && index < 5) {
-      document.getElementById(`login-otp-${index + 1}`)?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      document.getElementById(`login-otp-${index - 1}`)?.focus();
     }
   };
 
   const resetPhoneAuth = () => {
-    setOtpSent(false);
-    setOtpDigits(['', '', '', '', '', '']);
     setError('');
   };
 
   return (
-    <div className="min-h-screen w-full bg-stone-50 dark:bg-stone-950 flex font-sans relative overflow-hidden selection:bg-forest-500/30">
+    <div className="min-h-dvh w-full bg-stone-50 dark:bg-stone-950 flex flex-col lg:flex-row font-sans relative overflow-x-hidden overflow-y-auto selection:bg-forest-500/30">
       {/* Left Side - Image & Branding (desktop only) */}
       <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-forest-900">
         <div className="absolute inset-0">
@@ -128,7 +86,7 @@ const LoginPage: React.FC = () => {
             alt="Community Food Sharing" 
             className="w-full h-full object-cover opacity-60"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-forest-900 via-forest-900/40 to-transparent" />
+          <div className="absolute inset-0 bg-linear-to-t from-forest-900 via-forest-900/40 to-transparent" />
         </div>
         
         <div className="relative z-10 flex flex-col justify-between p-12 text-white w-full">
@@ -141,7 +99,7 @@ const LoginPage: React.FC = () => {
             <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/30">
               <Leaf className="text-white" size={20} />
             </div>
-            <span className="text-xl font-serif font-bold tracking-wide">FoodConnect</span>
+            <span className="text-xl font-serif font-bold tracking-wide animate-gradient-text">FoodConnect</span>
           </motion.div>
 
           <motion.div 
@@ -151,7 +109,7 @@ const LoginPage: React.FC = () => {
             className="max-w-md"
           >
             <h1 className="text-4xl md:text-5xl font-serif font-bold mb-6 leading-tight">
-              Turn Surplus into <span className="text-transparent bg-clip-text bg-gradient-to-r from-forest-300 to-emerald-200">Sustenance</span>
+              Turn Surplus into <span className="text-transparent bg-clip-text bg-linear-to-r from-forest-300 to-emerald-200">Sustenance</span>
             </h1>
             <p className="text-lg text-stone-200 leading-relaxed">
               Join our network of conscious partners bridging the gap between abundance and need. Your contribution makes a difference.
@@ -164,15 +122,19 @@ const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Right Side - Login Form with Spatial Background */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-4 sm:p-8 animate-mesh-bg relative">
-        <div className="absolute inset-0 bg-white/40 dark:bg-stone-950/40 backdrop-blur-[2px]"></div>
+      {/* Right Side - Login Form with Cinematic Premium Background */}
+      <div className="w-full lg:w-1/2 min-h-dvh flex items-start lg:items-center justify-center p-4 sm:p-8 py-8 lg:py-10 animate-mesh-bg relative overflow-y-auto">
+        {/* Cinematic overlay gradient */}
+        <div className="fixed inset-0 cinematic-overlay pointer-events-none" />
+        
+        {/* Breathing backdrop */}
+        <div className="fixed inset-0 bg-white/20 dark:bg-stone-950/30 backdrop-blur-[1px] backdrop-breathing pointer-events-none" />
         
         <motion.div 
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
-          className="w-full max-w-[440px] glass-panel p-8 sm:p-10 rounded-3xl relative z-10 shadow-2xl preserve-3d"
+          initial={{ opacity: 0, y: 40, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.6, type: "spring", stiffness: 80, damping: 15 }}
+          className="w-full max-w-110 glass-panel p-8 sm:p-10 rounded-3xl relative z-10 shadow-2xl preserve-3d my-8 lg:my-12"
         >
           {/* Mobile Logo */}
           <div className="flex justify-center mb-8 lg:hidden">
@@ -215,29 +177,7 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Auth Method Switcher */}
-          {isLogin && (
-            <div className="flex justify-center mb-6">
-              <div className="inline-flex bg-slate-100/70 p-0.5 rounded-lg text-xs">
-                <button
-                  onClick={() => { setAuthMethod('credentials'); resetPhoneAuth(); }}
-                  className={`px-4 py-1.5 font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-                    authMethod === 'credentials' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  }`}
-                >
-                  <Lock size={13} /> Password
-                </button>
-                <button
-                  onClick={() => { setAuthMethod('phone'); resetPhoneAuth(); }}
-                  className={`px-4 py-1.5 font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-                    authMethod === 'phone' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
-                  }`}
-                >
-                  <Smartphone size={13} /> Phone OTP
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Auth Method Switcher - REMOVED OTP FOR NOW */}
 
           {error && (
             <motion.div 
@@ -250,97 +190,8 @@ const LoginPage: React.FC = () => {
             </motion.div>
           )}
 
-          {/* ── Phone OTP Flow ── */}
-          {isLogin && authMethod === 'phone' ? (
-            <div className="space-y-5">
-              {!otpSent ? (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-slate-900">Phone Number</label>
-                    <div className="relative group">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 group-focus-within:text-emerald-600 transition-colors" />
-                      <input 
-                        type="tel"
-                        placeholder="+91 98765 43210"
-                        value={role === 'hotel' ? managerNumber : phone}
-                        onChange={(e) => role === 'hotel' ? setManagerNumber(e.target.value) : setPhone(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 pl-12 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all font-medium"
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1">Include country code (e.g. +91 for India)</p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={isLoading}
-                    className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold rounded-xl py-3.5 shadow-lg shadow-emerald-700/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-                  >
-                    {isLoading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <Smartphone size={18} /> Send OTP
-                      </>
-                    )}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
-                    <ShieldCheck size={24} className="text-emerald-600 mx-auto mb-2" />
-                    <p className="text-sm font-medium text-emerald-800">OTP sent to your phone!</p>
-                    <p className="text-xs text-emerald-600 mt-1">Enter the 6-digit code below</p>
-                  </div>
-
-                  <div className="flex items-center justify-center gap-2">
-                    {otpDigits.map((digit, i) => (
-                      <input
-                        key={i}
-                        id={`login-otp-${i}`}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={e => handleOtpChange(i, e.target.value)}
-                        onKeyDown={e => handleOtpKeyDown(i, e)}
-                        className="w-12 h-14 text-center text-xl font-bold rounded-xl border-2 bg-slate-50 text-slate-900 border-slate-200 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 transition-all"
-                      />
-                    ))}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleVerifyOtp}
-                    disabled={isLoading || otpDigits.some(d => !d)}
-                    className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-semibold rounded-xl py-3.5 shadow-lg shadow-emerald-700/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2"
-                  >
-                    {isLoading ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <ShieldCheck size={18} /> Verify & Sign In
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={resetPhoneAuth}
-                    className="w-full text-sm text-slate-500 hover:text-emerald-700 font-medium transition-colors"
-                  >
-                    ← Change phone number
-                  </button>
-                </>
-              )}
-
-              {/* reCAPTCHA container (invisible) */}
-              <div id="recaptcha-container"></div>
-            </div>
-          ) : (
-            /* ── Credentials Flow ── */
-            <form onSubmit={handleSubmit} className="space-y-5">
+          {/* ── Credentials Flow (Only Method) ── */}
+          <form onSubmit={handleSubmit} className="space-y-5">
               
               <AnimatePresence mode="popLayout">
                 {!isLogin && (
@@ -362,6 +213,7 @@ const LoginPage: React.FC = () => {
                               value={address}
                               onChange={(e) => setAddress(e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 pl-12 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all"
+                              required={!isLogin}
                             />
                           </div>
                         </div>
@@ -374,6 +226,7 @@ const LoginPage: React.FC = () => {
                               value={managerNumber}
                               onChange={(e) => setManagerNumber(e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm"
+                              required={!isLogin}
                             />
                           </div>
                           <div className="space-y-1.5">
@@ -384,6 +237,7 @@ const LoginPage: React.FC = () => {
                               value={licenseNumber}
                               onChange={(e) => setLicenseNumber(e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm"
+                              required={!isLogin}
                             />
                           </div>
                         </div>
@@ -413,6 +267,7 @@ const LoginPage: React.FC = () => {
                               value={age}
                               onChange={(e) => setAge(e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm"
+                              required={!isLogin}
                             />
                           </div>
                           <div className="space-y-1.5">
@@ -423,6 +278,7 @@ const LoginPage: React.FC = () => {
                               value={vehicle}
                               onChange={(e) => setVehicle(e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all text-sm"
+                              required={!isLogin}
                             />
                           </div>
                         </div>
@@ -513,17 +369,34 @@ const LoginPage: React.FC = () => {
                 )}
               </button>
 
+              {/* Demo Login Button - Only show on login screen */}
+              {isLogin && (
+                <button 
+                  type="button"
+                  onClick={() => {
+                    try {
+                      demoLogin(role);
+                      sendLocalNotification('request_accepted', 'Demo Login', `Welcome! You are logged in as ${role === 'hotel' ? 'Hotel Paradise' : 'Alex Johnson'}.`);
+                    } catch (err: any) {
+                      setError(err.message || 'Demo login failed');
+                    }
+                  }}
+                  className="w-full mt-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl py-3 shadow-lg shadow-amber-500/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 border border-amber-400/30"
+                >
+                  🎭 Demo Login ({role === 'hotel' ? '🏨 Hotel' : '🤝 Volunteer'})
+                </button>
+              )}
+
               {/* reCAPTCHA container for credentials flow (if needed) */}
               <div id="recaptcha-container"></div>
             </form>
-          )}
 
           {/* Footer */}
           <div className="mt-8 text-center">
             <p className="text-sm text-slate-500 font-medium">
               {isLogin ? "Don't have an account?" : "Already have an account?"}{' '}
               <button 
-                onClick={() => { setIsLogin(!isLogin); setError(''); setAuthMethod('credentials'); resetPhoneAuth(); }}
+                onClick={() => { setIsLogin(!isLogin); setError(''); resetPhoneAuth(); }}
                 className="text-emerald-700 font-bold hover:underline transition-all"
               >
                 {isLogin ? 'Register now' : 'Sign in'}

@@ -1,5 +1,14 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Get API key from Vite environment
+const getApiKey = (): string => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("VITE_GEMINI_API_KEY environment variable not found");
+  }
+  return key;
+};
+
 // Helper to convert file to base64
 export const fileToGenerativePart = async (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -14,16 +23,14 @@ export const fileToGenerativePart = async (file: File): Promise<string> => {
   });
 };
 
-// 1. Image Analysis using gemini-3-pro-preview
+// 1. Image Analysis using gemini-2.0-flash
 export const analyzeFoodImage = async (file: File): Promise<{ title: string; tags: string[]; weightEstimate: number }> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found");
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const base64Data = await fileToGenerativePart(file);
 
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-2.0-flash',
     contents: {
       parts: [
         {
@@ -56,16 +63,14 @@ export const analyzeFoodImage = async (file: File): Promise<{ title: string; tag
   return JSON.parse(text);
 };
 
-// 2. Image Editing using gemini-2.5-flash-image
+// 2. Image Editing using gemini-2.0-flash
 export const editFoodImage = async (file: File, instruction: string): Promise<string> => {
-  if (!process.env.API_KEY) {
-    throw new Error("API Key not found");
-  }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const base64Data = await fileToGenerativePart(file);
 
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
+    model: 'gemini-2.0-flash',
     contents: {
       parts: [
         {
@@ -91,21 +96,8 @@ export const editFoodImage = async (file: File, instruction: string): Promise<st
 
 // 3. Video Generation using veo-3.1-fast-generate-preview
 export const generateImpactVideo = async (file: File): Promise<string> => {
-    // @ts-ignore
-    if (window.aistudio && window.aistudio.hasSelectedApiKey) {
-       // @ts-ignore
-       const hasKey = await window.aistudio.hasSelectedApiKey();
-       if (!hasKey) {
-          // @ts-ignore
-           await window.aistudio.openSelectKey();
-       }
-    }
-
-    if (!process.env.API_KEY) {
-        throw new Error("API Key not found");
-    }
-
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const base64Data = await fileToGenerativePart(file);
 
     try {
@@ -131,30 +123,20 @@ export const generateImpactVideo = async (file: File): Promise<string> => {
         const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
         if (!videoUri) throw new Error("Video generation failed");
         
-        return `${videoUri}&key=${process.env.API_KEY}`;
+        return `${videoUri}&key=${apiKey}`;
     } catch (error: any) {
-        if (error.message && error.message.includes("Requested entity was not found")) {
-            // @ts-ignore
-            if (window.aistudio && window.aistudio.openSelectKey) {
-                // @ts-ignore
-                await window.aistudio.openSelectKey();
-                throw new Error("API Key session expired or invalid. Please select your key again and retry.");
-            }
-        }
         throw error;
     }
 };
 
 
-// 4. Maps Grounding using gemini-2.5-flash
+// 4. Maps Grounding using gemini-2.0-flash
 export const findNearbyCharities = async (lat: number, lng: number): Promise<any[]> => {
-    if (!process.env.API_KEY) {
-        throw new Error("API Key not found");
-    }
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     
     const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         contents: "Find 3 food banks or charities near this location that accept food donations. Return their names and addresses.",
         config: {
             tools: [{ googleMaps: {} }],
@@ -176,4 +158,90 @@ export const findNearbyCharities = async (lat: number, lng: number): Promise<any
     })) || [];
 
     return places;
+};
+
+// 5. Calculate Waste Impact Score
+export const calculateWasteImpactScore = async (
+  foodType: string,
+  weight: number,
+  tags: string[]
+): Promise<{ score: number; impact: string; co2Saved: number; waterSaved: number }> => {
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `Calculate environmental impact score for a food donation with these details:
+- Food Type: ${foodType}
+- Weight: ${weight} kg
+- Tags: ${tags.join(", ")}
+
+Return JSON with:
+1. score: 0-100 impact score (higher is better for environment)
+2. impact: string summary (e.g., "High environmental benefit")
+3. co2Saved: estimated CO2 in kg that would be produced if thrown away
+4. waterSaved: estimated water in liters saved`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          score: { type: Type.NUMBER },
+          impact: { type: Type.STRING },
+          co2Saved: { type: Type.NUMBER },
+          waterSaved: { type: Type.NUMBER }
+        },
+        required: ["score", "impact", "co2Saved", "waterSaved"]
+      }
+    }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return JSON.parse(text);
+};
+
+// 6. Generate Nutritional Summary
+export const generateNutritionalSummary = async (
+  foodType: string,
+  tags: string[]
+): Promise<{ calories: number; protein: string; carbs: string; fat: string; nutrients: string[] }> => {
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `Generate nutritional summary for a typical serving of:
+- Food Type: ${foodType}
+- Tags: ${tags.join(", ")}
+
+Return JSON with:
+1. calories: approximate calories per serving
+2. protein: grams of protein (e.g., "15g")
+3. carbs: grams of carbs (e.g., "45g")
+4. fat: grams of fat (e.g., "5g")
+5. nutrients: array of key nutrients (e.g., ["Iron", "Vitamin B12", "Fiber"])`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.0-flash',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          calories: { type: Type.NUMBER },
+          protein: { type: Type.STRING },
+          carbs: { type: Type.STRING },
+          fat: { type: Type.STRING },
+          nutrients: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["calories", "protein", "carbs", "fat", "nutrients"]
+      }
+    }
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return JSON.parse(text);
 }

@@ -1,0 +1,50 @@
+FoodConnect - Features and Functionalities
+
+Part 1: Hotel & Restaurant Partner Portal
+
+1. Real-Time Donation Dashboard
+- Hotels can actively list surplus food with granular metadata including exact weight, categorical tags (rice, noodles), and strict pickup time windows.
+- The dashboard auto-updates using WebSocket subscriptions to display pending requests without manual refreshing.
+
+2. Volunteer Filtering & Acceptance
+- Instead of a blind queue, hotels receive specific "pickup requests" from registered volunteers.
+- Hotels can review the volunteer's vehicle type and gamification score before clicking "Accept" or "Reject".
+
+3. OTP Secure Handoff Protocol
+- Prevents unauthorized food theft.
+- When an assignment is confirmed, a cryptographic OTP is generated. The hotel must enter the code provided by the physically present volunteer to close out the donation state to 'Delivered'.
+
+4. Comprehensive Export & ESG Reporting
+- Hotels maintain a legal and audit-ready 'Donation History'.
+- Offers 1-click exporting to CSV or direct syncing to Google Sheets, encapsulating total weight donated, timestamps, and destination identifiers.
+
+5. AI-Powered Impact Generation
+- Uses the Google Gemini Large Language Model to process history and images, generating qualitative "Impact Summary Reports" and scripts for marketing videos highlighting the hotel's CSR (Corporate Social Responsibility) efforts.
+
+Part 2: Volunteer Portal
+
+1. Geospatial Live Map Interface
+- Utilizes Leaflet and OpenStreetMap to plot real-time food donations.
+- Implements `supercluster` so that when a volunteer zooms out, hundreds of nearby donations aggregate cleanly into cluster bubbles with quantity indicators.
+
+2. True-Route Logistics Engine
+- Before accepting a pickup, the application uses OpenRouteService to calculate real driving distance (not straight-line distance) and driving ETAs.
+
+3. Dedicated Navigation Mode
+- Once a pickup request is granted, the UI enters 'Navigation Mode'.
+- Provides turn-by-turn routing directly to the hotel and prominently pins the 4-digit Authorization OTP at the top of the interface for quick access upon arrival.
+
+4. Gamified Impact Dashboard
+- Volunteers possess a "Score" field in the database. Successful handoffs scale their score via an automated trigger.
+- The UI features Recharts-powered graphs displaying an individual's historical impact (lbs/kg of food saved) over time, incentivizing continued platform usage.
+
+Part 3: Global System Features
+
+1. Instantaneous Synchronization
+- Built heavily on Supabase real-time event listeners. Any state change on row data (PENDING -> REQUESTED -> ASSIGNED) instantly rerenders interfaces globally for all interested parties.
+
+2. Cross-Platform Push Notifications
+- Powered by Firebase Cloud Messaging (FCM). If a volunteer's application is in the background, their device still receives a native OS pop-up when their pickup request is accepted.
+
+3. Mobile-First Progressive Web App (PWA) Design
+- Fully responsive styling utilizing Tailwind CSS and animated via Framer Motion for a native app feel. Features Dark Mode across all portals and graceful degradation / Offline Fallbacks via localStorage when connectivity drops.

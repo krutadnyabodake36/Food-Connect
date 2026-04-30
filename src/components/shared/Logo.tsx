@@ -29,7 +29,7 @@ export const Logo: React.FC<LogoProps> = ({ size = 'md', showText = true }) => {
         <Leaf size={iconSizes[size]} />
       </div>
       {showText && (
-        <span className={`${textSizes[size]} font-serif font-bold text-forest-900 dark:text-forest-300 tracking-wide`}>
+        <span className={`${textSizes[size]} font-serif font-bold tracking-wide animate-gradient-text`}>
           FoodConnect
         </span>
       )}

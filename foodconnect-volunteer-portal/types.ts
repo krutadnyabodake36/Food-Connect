@@ -3,9 +3,10 @@ export interface Donation {
   hotelName: string;
   distance: string;
   foodItem: string;
-  quantity: number; // in kg
+  weight: number; // changed from quantity → weight
+  quantityUnit?: 'kg' | 'plates' | 'pieces' | 'servings'; // NEW: track unit type
   expiryTime: string;
-  pickupTime: string; // New field
+  pickupTime: string;
   lat: number;
   lng: number;
   imageUrl: string;
@@ -39,6 +40,6 @@ export interface DonationSheetProps {
   selectedId: string | null;
   onCloseDetail: () => void;
   onSelectDonation: (id: string) => void;
-  onAcceptPickup: (id: string) => void;
+  onAcceptPickup: (id: string, claimedQuantity: number, quantityUnit: string) => void; // NEW: pass claimed quantity and unit
   isNavigating?: boolean;
 }

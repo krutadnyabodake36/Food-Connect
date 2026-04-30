@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { Clock, ChevronDown, ChevronRight, Navigation, CheckCircle2, Minus, Plus, X, MapPin, Timer, Utensils, Send, Loader2, ShieldCheck } from 'lucide-react';
+import { Clock, ChevronDown, ChevronRight, Navigation, CheckCircle2, Minus, Plus, X, MapPin, Timer, Utensils, Send, Loader2, ShieldCheck, Zap, Leaf } from 'lucide-react';
 import { DonationSheetProps, VolunteerDonation } from '../../types';
 import { getFoodSafetyTips } from '../../lib/openrouter';
 
